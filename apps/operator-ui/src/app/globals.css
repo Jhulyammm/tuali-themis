@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * Themis — Design tokens
+ * Pegado de docs/ui-spec.md sección 2.1
+ * ============================================================ */
+
+@layer base {
+  :root {
+    /* Backgrounds */
+    --bg-base: 0 0% 4%;        /* #0a0a0a — fondo más profundo */
+    --bg-surface: 240 4% 9%;   /* #18181b — cards, panels */
+    --bg-elevated: 240 4% 12%; /* #1f1f23 — popovers, dropdowns */
+    --bg-overlay: 240 4% 6%;   /* #0f0f10 — modal backdrop */
+
+    /* Borders */
+    --border-subtle: 240 4% 14%;
+    --border-default: 240 4% 18%;
+    --border-strong: 240 4% 25%;
+
+    /* Text */
+    --text-primary: 0 0% 95%;
+    --text-secondary: 240 4% 65%;
+    --text-tertiary: 240 4% 45%;
+    --text-disabled: 240 4% 28%;
+
+    /* Brand accent (coral, Arca-aligned) */
+    --accent-coral: 0 84% 60%;
+    --accent-coral-soft: 0 84% 60% / 0.12;
+    --accent-coral-glow: 0 84% 60% / 0.35;
+
+    /* Status */
+    --status-success: 142 76% 45%;
+    --status-warning: 38 92% 50%;
+    --status-error: 0 72% 55%;
+    --status-info: 217 92% 60%;
+
+    /* Motion */
+    --motion-micro: 150ms;
+    --motion-default: 300ms;
+    --motion-entrance: 500ms;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+
+    /* shadcn aliases (para que componentes de shadcn funcionen sin cambiar) */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+    --card: 240 4% 9%;
+    --card-foreground: 0 0% 95%;
+    --popover: 240 4% 12%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 0 84% 60%;
+    --primary-foreground: 0 0% 95%;
+    --secondary: 240 4% 14%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 4% 65%;
+    --accent: 240 4% 14%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
+    --ring: 0 84% 60%;
+    --radius: 6px;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--bg-base));
+    color: hsl(var(--text-primary));
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+}
