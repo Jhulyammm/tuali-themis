@@ -27,3 +27,12 @@ export type {
   Execution,
   Recording,
 } from "@hack4her/playbooks";
+
+// Playbook store (Capa 4 — MongoDB + filesystem fallback)
+export {
+  saveSavedPlaybook,
+  listSavedPlaybooks,
+  getSavedPlaybook,
+  recallSimilarMappings,
+  getStoreStatus,
+} from "./playbook-store";

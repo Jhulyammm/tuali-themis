@@ -1,25 +1,50 @@
 /**
- * @hack4her/agent — Claude + Computer Use + Stagehand orchestration.
+ * @hack4her/agent — Themis core: aprende, ejecuta, razona, recuerda, prueba.
  *
  * Structure (owner: Jhulyam):
- *   teach/      record DOM events + screenshots + narration → Recording
- *   playbook/   extract Playbook from Recording (LLM-driven)
- *   execute/    run Playbook against a target site, with generalization
- *   llm/        Anthropic Claude wrappers
+ *   teach/        Capa 1 — Recorder (DOM events + screenshots + narración)
+ *   playbook/     Capa 1 — Extractor (Recording → Playbook via Claude)
+ *   execute/      Capa 1 — Executor (Stagehand + self-healing)
+ *   cognitive/    Capa 3 — Gemini contextual recommendations
+ *   blockchain/   Capa 6 — Solana on-chain provenance
+ *   llm/          shared Claude/Anthropic helpers
  */
 
 export type {
   Playbook,
   PlaybookAction,
+  Mapping,
+  MappingExample,
   Execution,
   ExecutionStatus,
   ExecutionLog,
   Recording,
   RecordingEvent,
+  SolanaProvenance,
+  ZoneContext,
+  ContextualEvent,
+  CognitiveRecommendation,
+  RecommendationContext,
+  RecommendationsResponse,
 } from "@hack4her/playbooks";
 
-// To be implemented (hora 2-24):
-// export { recordPlaybook } from "./teach/recorder";
-// export { extractPlaybookFromRecording } from "./playbook/extractor";
-// export { executePlaybook } from "./execute/executor";
-// export { generalizePlaybook } from "./execute/generalizer";
+// Capa 1 — Observación
+export { Recorder, recordOnce } from "./teach/recorder";
+export type { RecorderConfig } from "./teach/recorder";
+
+// Capa 1 — Extracción
+export { extractPlaybookFromRecording } from "./playbook/extractor";
+
+// Capa 3 — Razonamiento contextual
+export { generateRecommendations } from "./cognitive/gemini-recommendations";
+
+// Capa 6 — Provenance on-chain
+export { SolanaProvenanceClient, sha256Hex } from "./blockchain/solana-client";
+
+// Capa 1 — Ejecución
+export { executePlaybook } from "./execute/executor";
+export type { ExecutorConfig } from "./execute/executor";
+
+// Capa 1 — Self-healing (vision fallback)
+export { selfHealStep } from "./execute/self-healing";
+export type { SelfHealingResult } from "./execute/self-healing";
