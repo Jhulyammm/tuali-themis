@@ -1,0 +1,112 @@
+{
+  "liga_mx_jornadas_2026": [
+    {
+      "event_id": "lmx-clasico-regio-2026-06",
+      "name": "Clásico Regio (Tigres vs Rayados)",
+      "type": "futbol",
+      "date": "2026-06-13",
+      "impact_zones": ["Monterrey-Norte", "Monterrey-Sur", "Monterrey-Centro", "Guadalupe", "San-Nicolas"],
+      "expected_impact": "+30-40% cerveza nacional (Tecate, Indio), +35% botanas saladas, +20% Gatorade en zonas con bares universitarios"
+    },
+    {
+      "event_id": "lmx-clasico-nacional-2026-06",
+      "name": "Clásico Nacional (Chivas vs América)",
+      "type": "futbol",
+      "date": "2026-06-21",
+      "impact_zones": ["Guadalajara-Centro", "Zapopan", "Tlaquepaque", "CDMX-Centro", "CDMX-Sur"],
+      "expected_impact": "+35-45% cerveza, +50% botanas, +25% refrescos 600ml en barrios deportivos"
+    },
+    {
+      "event_id": "lmx-clasico-capitalino-2026-07",
+      "name": "Clásico Capitalino (América vs Pumas)",
+      "type": "futbol",
+      "date": "2026-07-05",
+      "impact_zones": ["CDMX-Coyoacan", "CDMX-Sur", "CDMX-Centro"],
+      "expected_impact": "+25-35% cerveza, +30% botanas en zonas universitarias UNAM"
+    },
+    {
+      "event_id": "lmx-clasico-tapatio-2026-08",
+      "name": "Clásico Tapatío (Chivas vs Atlas)",
+      "type": "futbol",
+      "date": "2026-08-15",
+      "impact_zones": ["Guadalajara-Centro", "Zapopan", "Tlaquepaque"],
+      "expected_impact": "+30% cerveza nacional, +40% botanas en zonas comerciales tapatías"
+    },
+    {
+      "event_id": "lmx-final-apertura-2026-12",
+      "name": "Final Liga MX Apertura 2026",
+      "type": "futbol",
+      "date": "2026-12-13",
+      "impact_zones": ["nacional"],
+      "expected_impact": "+50% cerveza, +60% botanas, +20% refrescos a nivel país"
+    }
+  ],
+  "fechas_universitarias_2026": [
+    {
+      "event_id": "univ-inicio-semestre-otono",
+      "name": "Inicio semestre otoño",
+      "type": "universitario",
+      "date": "2026-08-10",
+      "impact_zones": ["zonas-universitarias-todas"],
+      "expected_impact": "+40% energéticos, +30% café enlatado, +25% snacks individuales por 3-4 semanas"
+    },
+    {
+      "event_id": "univ-graduacion-verano",
+      "name": "Graduaciones de verano",
+      "type": "universitario",
+      "date": "2026-06-25",
+      "impact_zones": ["zonas-universitarias-todas"],
+      "expected_impact": "+60% cervezas premium, +40% refrescos para fiestas, +30% botanas premium"
+    },
+    {
+      "event_id": "univ-dia-estudiante",
+      "name": "Día del Estudiante",
+      "type": "universitario",
+      "date": "2026-05-23",
+      "impact_zones": ["zonas-universitarias-todas"],
+      "expected_impact": "+45% cerveza nacional, +50% botanas, evento de un día con pico en la tarde"
+    },
+    {
+      "event_id": "univ-fin-semestre-otono",
+      "name": "Fin de semestre / exámenes finales otoño",
+      "type": "universitario",
+      "date": "2026-11-20",
+      "impact_zones": ["zonas-universitarias-todas"],
+      "expected_impact": "+50% energéticos (Red Bull, Monster), +40% café, -20% cerveza durante semana de exámenes"
+    }
+  ],
+  "fechas_comerciales_2026": [
+    {
+      "event_id": "com-quincena-1-junio",
+      "name": "Quincena 15 junio",
+      "type": "estacional",
+      "date": "2026-06-15",
+      "impact_zones": ["nacional"],
+      "expected_impact": "+25% ticket promedio en toda categoría, picos por la tarde-noche"
+    },
+    {
+      "event_id": "com-dia-padre",
+      "name": "Día del Padre",
+      "type": "comercial",
+      "date": "2026-06-21",
+      "impact_zones": ["nacional"],
+      "expected_impact": "+40% cerveza premium, +30% whisky/tequila económico, +50% botanas premium"
+    },
+    {
+      "event_id": "com-grito-independencia",
+      "name": "Grito de Independencia / 15 sep",
+      "type": "comercial",
+      "date": "2026-09-15",
+      "impact_zones": ["nacional"],
+      "expected_impact": "+60% cerveza, +70% tequila, +80% botanas mexicanas (cacahuates, chicharrones)"
+    },
+    {
+      "event_id": "com-buen-fin",
+      "name": "El Buen Fin",
+      "type": "comercial",
+      "date": "2026-11-13",
+      "impact_zones": ["nacional"],
+      "expected_impact": "+40% en todas categorías por 4 días"
+    }
+  ]
+}

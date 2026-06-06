@@ -1,0 +1,116 @@
+{
+  "zonas": [
+    {
+      "zone_id": "Monterrey-Norte",
+      "zone_name": "Monterrey Zona Norte (Tec)",
+      "city": "Monterrey",
+      "profile": "universitaria",
+      "nearby_institutions": ["Tec de Monterrey Campus Monterrey", "Universidad Autónoma de Nuevo León"]
+    },
+    {
+      "zone_id": "Monterrey-Centro",
+      "zone_name": "Monterrey Centro Histórico",
+      "city": "Monterrey",
+      "profile": "comercial",
+      "nearby_institutions": ["Macroplaza", "Barrio Antiguo"]
+    },
+    {
+      "zone_id": "Monterrey-Sur",
+      "zone_name": "Monterrey Sur (San Pedro)",
+      "city": "Monterrey",
+      "profile": "familiar",
+      "nearby_institutions": ["San Pedro Garza García", "Valle Oriente"]
+    },
+    {
+      "zone_id": "Guadalajara-Centro",
+      "zone_name": "Guadalajara Centro / Chapultepec",
+      "city": "Guadalajara",
+      "profile": "comercial",
+      "nearby_institutions": ["Centro Histórico GDL", "Av. Chapultepec"]
+    },
+    {
+      "zone_id": "Zapopan",
+      "zone_name": "Zapopan (ITESO)",
+      "city": "Zapopan",
+      "profile": "universitaria",
+      "nearby_institutions": ["ITESO", "UAG"]
+    },
+    {
+      "zone_id": "CDMX-Coyoacan",
+      "zone_name": "CDMX Coyoacán (UNAM)",
+      "city": "Ciudad de México",
+      "profile": "universitaria",
+      "nearby_institutions": ["UNAM Ciudad Universitaria", "Coyoacán Centro"]
+    },
+    {
+      "zone_id": "CDMX-Centro",
+      "zone_name": "CDMX Centro Histórico",
+      "city": "Ciudad de México",
+      "profile": "turistica",
+      "nearby_institutions": ["Zócalo", "Centro Histórico"]
+    },
+    {
+      "zone_id": "CDMX-Sur",
+      "zone_name": "CDMX Sur (UAM Xochimilco)",
+      "city": "Ciudad de México",
+      "profile": "universitaria",
+      "nearby_institutions": ["UAM Xochimilco", "Tlalpan"]
+    }
+  ],
+  "tiendas_mock": [
+    {
+      "id": "OXXO-TEC-SUR-001",
+      "nombre": "OXXO Tec Sur",
+      "tipo": "OXXO",
+      "ciudad": "Monterrey",
+      "zona_id": "Monterrey-Norte",
+      "distancia_universidad_metros": 600,
+      "universidad_cercana": "Tec de Monterrey"
+    },
+    {
+      "id": "OXXO-CONSTITUYENTES-MTY",
+      "nombre": "OXXO Constituyentes",
+      "tipo": "OXXO",
+      "ciudad": "Monterrey",
+      "zona_id": "Monterrey-Centro",
+      "distancia_universidad_metros": null,
+      "universidad_cercana": null
+    },
+    {
+      "id": "7-ELEVEN-VALLE-MTY",
+      "nombre": "7-Eleven Valle Oriente",
+      "tipo": "7-Eleven",
+      "ciudad": "Monterrey",
+      "zona_id": "Monterrey-Sur",
+      "distancia_universidad_metros": null,
+      "universidad_cercana": null
+    },
+    {
+      "id": "OXXO-ITESO-GDL",
+      "nombre": "OXXO ITESO",
+      "tipo": "OXXO",
+      "ciudad": "Zapopan",
+      "zona_id": "Zapopan",
+      "distancia_universidad_metros": 250,
+      "universidad_cercana": "ITESO"
+    },
+    {
+      "id": "OXXO-UNAM-CDMX",
+      "nombre": "OXXO Coyoacán UNAM",
+      "tipo": "OXXO",
+      "ciudad": "Ciudad de México",
+      "zona_id": "CDMX-Coyoacan",
+      "distancia_universidad_metros": 400,
+      "universidad_cercana": "UNAM"
+    },
+    {
+      "id": "WALMART-EXPRESS-CHAPULTEPEC",
+      "nombre": "Walmart Express Chapultepec",
+      "tipo": "Walmart Express",
+      "ciudad": "Guadalajara",
+      "zona_id": "Guadalajara-Centro",
+      "distancia_universidad_metros": null,
+      "universidad_cercana": null
+    }
+  ]
+}
