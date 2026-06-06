@@ -73,3 +73,6 @@ Desktop.ini
 *~
 *.bak
 *.tmp
+
+# Runtime data (auto-generada por /api/playbook/extract)
+data/playbooks-store.json
