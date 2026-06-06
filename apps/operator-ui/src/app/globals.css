@@ -3,39 +3,41 @@
 @tailwind utilities;
 
 /* ============================================================
- * Themis — Design tokens
- * Pegado de docs/ui-spec.md sección 2.1
+ * Themis — Design tokens (light theme, from THEMIS-standalone.html)
  * ============================================================ */
 
 @layer base {
   :root {
     /* Backgrounds */
-    --bg-base: 0 0% 4%;        /* #0a0a0a — fondo más profundo */
-    --bg-surface: 240 4% 9%;   /* #18181b — cards, panels */
-    --bg-elevated: 240 4% 12%; /* #1f1f23 — popovers, dropdowns */
-    --bg-overlay: 240 4% 6%;   /* #0f0f10 — modal backdrop */
+    --bg-base: 60 14% 96%;      /* #F7F7F5 — warm off-white */
+    --bg-surface: 0 0% 100%;    /* #FFFFFF — cards, panels */
+    --bg-elevated: 40 17% 99%;  /* #FBFBFA — popovers, inputs */
+    --bg-overlay: 0 0% 0%;      /* modal backdrop (use with /30 opacity) */
 
     /* Borders */
-    --border-subtle: 240 4% 14%;
-    --border-default: 240 4% 18%;
-    --border-strong: 240 4% 25%;
+    --border-subtle: 0 0% 90%;   /* #E5E5E5 */
+    --border-default: 0 0% 90%;  /* #E5E5E5 */
+    --border-strong: 60 3% 85%;  /* #D8D8D5 */
 
     /* Text */
-    --text-primary: 0 0% 95%;
-    --text-secondary: 240 4% 65%;
-    --text-tertiary: 240 4% 45%;
-    --text-disabled: 240 4% 28%;
+    --text-primary: 0 0% 7%;       /* #111111 */
+    --text-secondary: 220 9% 46%;  /* #6B7280 */
+    --text-tertiary: 220 9% 65%;   /* #9CA3AF */
+    --text-disabled: 220 9% 80%;
 
-    /* Brand accent (coral, Arca-aligned) */
-    --accent-coral: 0 84% 60%;
-    --accent-coral-soft: 0 84% 60% / 0.12;
-    --accent-coral-glow: 0 84% 60% / 0.35;
+    /* Brand accent — Arca crimson */
+    --accent-coral: 350 85% 42%;          /* #C8102E */
+    --accent-coral-soft: 350 85% 42% / 0.10;
+    --accent-coral-glow: 350 85% 42% / 0.30;
 
     /* Status */
-    --status-success: 142 76% 45%;
-    --status-warning: 38 92% 50%;
+    --status-success: 142 74% 37%;    /* #16A34A */
+    --status-success-bg: 146 82% 96%; /* #ECFDF3 */
+    --status-warning: 44 97% 48%;     /* #F5B301 */
+    --status-warning-bg: 44 96% 93%;  /* #FEF6E0 */
     --status-error: 0 72% 55%;
-    --status-info: 217 92% 60%;
+    --status-info: 217 82% 54%;       /* #2563EB */
+    --status-info-bg: 217 100% 97%;   /* #EFF4FF */
 
     /* Motion */
     --motion-micro: 150ms;
@@ -44,31 +46,31 @@
 
     /* Radius */
     --radius-sm: 4px;
-    --radius-md: 6px;
-    --radius-lg: 8px;
-    --radius-xl: 12px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
 
     /* shadcn aliases (para que componentes de shadcn funcionen sin cambiar) */
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
-    --card: 240 4% 9%;
-    --card-foreground: 0 0% 95%;
-    --popover: 240 4% 12%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 0 84% 60%;
-    --primary-foreground: 0 0% 95%;
-    --secondary: 240 4% 14%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 240 4% 14%;
-    --muted-foreground: 240 4% 65%;
-    --accent: 240 4% 14%;
-    --accent-foreground: 0 0% 95%;
+    --background: 60 14% 96%;
+    --foreground: 0 0% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 7%;
+    --popover: 40 17% 99%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 350 85% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 90%;
+    --secondary-foreground: 0 0% 7%;
+    --muted: 0 0% 90%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 0 0% 90%;
+    --accent-foreground: 0 0% 7%;
     --destructive: 0 72% 55%;
-    --destructive-foreground: 0 0% 95%;
-    --border: 240 4% 18%;
-    --input: 240 4% 18%;
-    --ring: 0 84% 60%;
-    --radius: 6px;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 350 85% 42%;
+    --radius: 8px;
   }
 
   * {

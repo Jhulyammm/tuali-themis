@@ -1,16 +1,6 @@
-/**
- * VoiceIndicator — Capa 2 · Voz activa
- *
- * Waveform animado cuando Themis está hablando (ElevenLabs) o cuando el
- * operador está narrando (Whisper).
- *
- * TODO Marita: aplicar mockup Figma #5 (Step log con voz activa).
- * Tip: barras verticales con pulse desincronizado para sentir "vivo".
- */
-
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,41 +13,66 @@ interface VoiceIndicatorProps {
 export function VoiceIndicator({ active, source, className }: VoiceIndicatorProps) {
   const Icon = source === "user" ? Mic : Volume2;
   const color = source === "user" ? "text-status-info" : "text-coral";
+  const bgColor = source === "user" ? "bg-status-info-bg border-status-info/20" : "bg-red-50 border-coral/20";
 
   return (
-    <div
-      className={cn(
-        "inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-xs font-mono",
-        active ? "bg-bg-elevated" : "opacity-40",
-        className,
+    <AnimatePresence>
+      {active ? (
+        <motion.div
+          key="active"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.2 }}
+          className={cn(
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono border",
+            bgColor,
+            className,
+          )}
+        >
+          <Icon className={cn("w-3.5 h-3.5 flex-shrink-0", color)} />
+          <Waveform active color={source === "user" ? "#2563EB" : "#C8102E"} />
+          <span className={cn("font-medium", color)}>
+            {source === "user" ? "Tú narrando" : "Themis hablando"}
+          </span>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="inactive"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className={cn(
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono border border-border bg-white text-text-tertiary",
+            className,
+          )}
+        >
+          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+          <Waveform active={false} color="#9CA3AF" />
+        </motion.div>
       )}
-    >
-      <Icon className={cn("w-3.5 h-3.5", color)} />
-      <Waveform active={active} />
-      <span className="text-text-secondary">
-        {source === "user" ? "Tú narrando..." : "Themis hablando..."}
-      </span>
-    </div>
+    </AnimatePresence>
   );
 }
 
-function Waveform({ active }: { active: boolean }) {
+function Waveform({ active, color }: { active: boolean; color: string }) {
   const bars = [0, 0.15, 0.3, 0.45, 0.6, 0.75];
+
   return (
-    <div className="flex items-center gap-0.5 h-3">
+    <div className="flex items-center gap-[2px] h-3.5">
       {bars.map((delay, i) => (
         <motion.span
           key={i}
-          className="w-0.5 bg-current rounded-full"
+          className="w-[2px] rounded-full"
+          style={{ backgroundColor: color }}
           animate={
             active
-              ? {
-                  height: ["20%", "100%", "40%", "80%", "30%"],
-                }
-              : { height: "20%" }
+              ? { height: ["30%", "100%", "50%", "85%", "35%"] }
+              : { height: "25%" }
           }
           transition={{
-            duration: 0.8,
+            duration: 0.75,
             repeat: active ? Infinity : 0,
             delay,
             repeatType: "mirror",

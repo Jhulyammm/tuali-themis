@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Sidebar } from "@/components/Sidebar";
+import { Topbar } from "@/components/Topbar";
 
 export const metadata: Metadata = {
   title: "Themis · Agente Cognitivo Verificable",
@@ -13,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="dark">
+    <html lang="es">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -26,8 +28,16 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="bg-bg-base text-text-primary min-h-screen antialiased">
-        {children}
+      <body className="bg-bg-base text-text-primary antialiased">
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <main className="flex-1 min-w-0 flex flex-col">
+            <Topbar />
+            <div className="flex-1 overflow-y-auto">
+              {children}
+            </div>
+          </main>
+        </div>
       </body>
     </html>
   );

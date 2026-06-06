@@ -1,14 +1,3 @@
-/**
- * /memory — Capa 4 + Capa 6 demo page.
- *
- * Knowledge graph REAL: lee de /api/playbooks (MongoDB o filesystem).
- * Cada mapeo aparece con su Solana badge verificable on-chain.
- *
- * Cuando hay 0 playbooks → muestra mock para que la UI no esté vacía.
- *
- * Marita: polish visual del grid + animaciones de aparición siguiendo mockup #4.
- */
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -16,7 +5,7 @@ import { MemoryGraphView, LearnedMappingRecord } from "@/components/MemoryGraphV
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Brain, Search } from "lucide-react";
 import type { Playbook, SolanaProvenance } from "@hack4her/playbooks";
 
 const MOCK_FALLBACK: LearnedMappingRecord[] = [
@@ -27,15 +16,15 @@ const MOCK_FALLBACK: LearnedMappingRecord[] = [
     destination_field: "Denominación comercial",
     destination_selector_intent: "campo de denominación",
     confidence: 0.97,
-    examples: [
-      { source_value: "Blue Top", destination_value: "Blue Top" },
-    ],
+    examples: [{ source_value: "Blue Top", destination_value: "Blue Top" }],
     learned_at: "2026-06-06T14:30:00Z",
     source_site: "automationexercise.com",
     destination_site: "erp-destino.local",
     zone_context: "demo",
   },
 ];
+
+const FILTER_OPTIONS = ["Todos", "SAP S/4HANA", "erp-destino", "Facturación"];
 
 interface BackendStatus {
   backend: "mongodb" | "filesystem";
@@ -47,6 +36,8 @@ export default function MemoryPage() {
   const [status, setStatus] = useState<BackendStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("Todos");
 
   const loadAll = async () => {
     setLoading(true);
@@ -54,10 +45,7 @@ export default function MemoryPage() {
     try {
       const res = await fetch("/api/playbooks");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        playbooks: Playbook[];
-        status: BackendStatus;
-      };
+      const data = (await res.json()) as { playbooks: Playbook[]; status: BackendStatus };
       setStatus(data.status);
       setMappings(playbooksToMappings(data.playbooks));
     } catch (err) {
@@ -68,91 +56,147 @@ export default function MemoryPage() {
     }
   };
 
-  useEffect(() => {
-    void loadAll();
-  }, []);
+  useEffect(() => { void loadAll(); }, []);
 
   const realCount = mappings.filter((m) => m.id !== "demo-1").length;
   const verifiedCount = mappings.filter((m) => m.provenance).length;
   const avgConfidence =
     mappings.length > 0
-      ? Math.round(
-          (mappings.reduce((s, m) => s + m.confidence, 0) /
-            mappings.length) *
-            100,
-        )
+      ? Math.round((mappings.reduce((s, m) => s + m.confidence, 0) / mappings.length) * 100)
       : 0;
 
+  // Client-side filtering
+  const filtered = mappings.filter((m) => {
+    const matchSearch =
+      !search ||
+      m.source_field.toLowerCase().includes(search.toLowerCase()) ||
+      m.destination_field.toLowerCase().includes(search.toLowerCase());
+    const matchFilter =
+      activeFilter === "Todos" ||
+      m.destination_site.toLowerCase().includes(activeFilter.toLowerCase());
+    return matchSearch && matchFilter;
+  });
+
   return (
-    <main className="min-h-screen p-8">
+    <div className="min-h-screen p-8 bg-bg-base">
       <div className="max-w-6xl mx-auto space-y-6">
-        <header className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <p className="font-mono text-xs uppercase tracking-wider text-text-tertiary">
-              Capa 4 · Knowledge Graph · Capa 6 · Solana provenance
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-text-tertiary">
+              Capa 4 · Knowledge Graph · Capa 6 · Solana Provenance
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight text-text-primary">
               Memoria de Themis
             </h1>
-            <p className="text-text-secondary">
-              Cada mapeo aprendido se guarda — verificable en Solana, reusable cross-cliente.
+            <p className="text-sm text-text-secondary">
+              Cada mapeo aprendido se guarda — verificable en Solana, reutilizable cross-cliente.
             </p>
           </div>
           <Button onClick={loadAll} disabled={loading} variant="secondary">
-            <RefreshCw className={loading ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
             Refrescar
           </Button>
-        </header>
+        </div>
 
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard label="Mapeos aprendidos" value={mappings.length} icon={<Brain className="w-5 h-5 text-text-tertiary" />} />
+          <StatCard label="Verificados on-chain" value={verifiedCount} highlight icon={
+            <svg className="w-5 h-5 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          } />
+          <StatCard label="Confidence promedio" value={`${avgConfidence}%`} icon={
+            <svg className="w-5 h-5 text-status-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" />
+            </svg>
+          } />
+        </div>
+
+        {/* Backend badge */}
         {status && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Badge variant={status.backend === "mongodb" ? "success" : "info"}>
-              backend: {status.backend}
+              {status.backend}
             </Badge>
             <span className="text-xs text-text-tertiary font-mono">
               {status.count} playbook{status.count !== 1 ? "s" : ""} persistidos
             </span>
+            {realCount === 0 && (
+              <Badge variant="secondary">mostrando ejemplo · corre /teach</Badge>
+            )}
           </div>
         )}
 
-        <div className="flex items-center gap-6 text-sm">
-          <Stat label="Mapeos aprendidos" value={mappings.length.toString()} />
-          <Stat label="Verificados on-chain" value={verifiedCount.toString()} highlight />
-          <Stat label="Confidence promedio" value={`${avgConfidence}%`} />
-          {realCount === 0 && (
-            <Badge variant="secondary">mostrando ejemplo (corre /teach)</Badge>
-          )}
-        </div>
-
         {error && (
-          <Card className="border-status-warning/40 bg-status-warning/5">
-            <CardContent className="p-4 text-xs text-text-secondary">
-              {error}
-            </CardContent>
+          <Card className="border-status-warning/40 bg-status-warning-bg">
+            <CardContent className="p-4 text-xs text-text-secondary">{error}</CardContent>
           </Card>
         )}
 
-        <MemoryGraphView mappings={mappings} />
+        {/* Search + filter row */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-48 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-tertiary pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar campo..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-coral/30"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {FILTER_OPTIONS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setActiveFilter(f)}
+                className={[
+                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                  activeFilter === f
+                    ? "bg-[#C8102E] text-white"
+                    : "bg-white border border-border text-text-secondary hover:border-coral/50 hover:text-coral",
+                ].join(" ")}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Count indicator */}
+        {(search || activeFilter !== "Todos") && (
+          <p className="text-xs text-text-tertiary font-mono">
+            {filtered.length} de {mappings.length} mapeos
+          </p>
+        )}
+
+        <MemoryGraphView mappings={filtered} />
       </div>
-    </main>
+    </div>
   );
 }
 
-function Stat({
+function StatCard({
   label,
   value,
+  icon,
   highlight,
 }: {
   label: string;
-  value: string;
+  value: number | string;
+  icon: React.ReactNode;
   highlight?: boolean;
 }) {
   return (
-    <div>
-      <p className="font-mono text-xs uppercase text-text-tertiary">{label}</p>
-      <p
-        className={`text-xl font-semibold tabular-nums ${highlight ? "text-coral" : ""}`}
-      >
+    <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary">{label}</p>
+        {icon}
+      </div>
+      <p className={`text-3xl font-bold tabular-nums ${highlight ? "text-coral" : "text-text-primary"}`}>
         {value}
       </p>
     </div>
@@ -186,9 +230,5 @@ function playbooksToMappings(playbooks: Playbook[]): LearnedMappingRecord[] {
 
 function hostnameOf(url?: string): string {
   if (!url) return "";
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
+  try { return new URL(url).hostname; } catch { return url; }
 }

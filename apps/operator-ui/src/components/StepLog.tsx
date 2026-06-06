@@ -1,17 +1,6 @@
-/**
- * StepLog — Capa 1 · Modo Ejecutar
- *
- * Lista vertical de pasos siendo ejecutados por Themis.
- * Estado "adapting ⚡" cuando un selector falló y se está usando vision fallback.
- *
- * TODO Marita: aplicar mockup Figma #5 (Step log con voz activa).
- * Tip: el paso actual tiene border-left coral 2px + pulse sutil.
- * El icono ⚡ es PERMANENTE después de un self-healing — es la insignia.
- */
-
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Check, X, Loader2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ExecutionLog } from "@hack4her/playbooks";
@@ -23,62 +12,129 @@ interface StepLogProps {
 }
 
 export function StepLog({ logs, currentIndex, className }: StepLogProps) {
-  // Defensa contra entries vacías
   const safeLogs = (logs ?? []).filter(
     (l): l is ExecutionLog => !!l && !!l.action,
   );
 
+  if (safeLogs.length === 0) {
+    return (
+      <div className={cn("py-10 text-center text-text-tertiary text-sm", className)}>
+        Clic en "Visual demo" para ver la ejecución.
+      </div>
+    );
+  }
+
   return (
-    <ol className={cn("space-y-1.5", className)}>
-      {safeLogs.map((log, i) => (
-        <StepRow key={i} log={log} isActive={i === currentIndex} />
-      ))}
+    <ol className={cn("space-y-2 max-h-[60vh] overflow-y-auto pr-1", className)}>
+      <AnimatePresence initial={false}>
+        {safeLogs.map((log, i) => (
+          <StepRow key={i} log={log} index={i} isActive={i === currentIndex} />
+        ))}
+      </AnimatePresence>
     </ol>
   );
 }
 
-function StepRow({ log, isActive }: { log: ExecutionLog; isActive: boolean }) {
+function StepRow({
+  log,
+  index,
+  isActive,
+}: {
+  log: ExecutionLog;
+  index: number;
+  isActive: boolean;
+}) {
   const adapted = !!log.adapted_to;
+  const isAdapting = log.status === "adapting";
   const actionName = getActionLabel(log.action);
 
   return (
     <motion.li
-      initial={{ opacity: 0, x: 12 }}
+      initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3 }}
-      className={cn(
-        "flex items-start gap-3 px-3 py-2 rounded transition-colors",
-        isActive && "border-l-2 border-coral bg-coral/5",
-      )}
+      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
     >
-      <StatusIcon status={log.status} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 text-sm">
-          <span className={cn(log.status === "failed" && "text-status-error")}>
-            {actionName}
-          </span>
-          {adapted && (
-            <Zap className="w-3.5 h-3.5 text-status-warning" aria-label="Self-healed" />
+      {isAdapting ? (
+        /* ⚡ Self-healing wow moment */
+        <motion.div
+          animate={{
+            boxShadow: [
+              "0 0 0 0 rgba(245,179,1,0.5)",
+              "0 0 0 12px rgba(245,179,1,0)",
+              "0 0 0 0 rgba(245,179,1,0)",
+            ],
+          }}
+          transition={{ duration: 1.8, repeat: Infinity }}
+          className="border-l-4 border-status-warning bg-status-warning-bg rounded-r-xl px-4 py-3"
+        >
+          <div className="flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-status-warning animate-spin flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-status-warning" />
+                <span className="text-sm font-semibold text-status-warning">
+                  Auto-reparando
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-amber-700 animate-adapting">
+                Detecté un cambio en el selector. Resolviendo con visión...
+              </p>
+            </div>
+            <span className="font-mono text-xs text-status-warning tabular-nums">
+              {log.duration_ms > 0 ? `${log.duration_ms}ms` : "..."}
+            </span>
+          </div>
+        </motion.div>
+      ) : (
+        /* Normal step row */
+        <div
+          className={cn(
+            "flex items-start gap-3 px-3 py-2.5 rounded-xl transition-colors",
+            isActive && "bg-coral/5 border-l-2 border-coral",
+            !isActive && "hover:bg-bg-elevated/60",
           )}
-          <span className="ml-auto font-mono text-xs text-text-tertiary tabular-nums">
-            {log.duration_ms}ms
+        >
+          {/* Step number */}
+          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-elevated flex items-center justify-center font-mono text-[10px] text-text-tertiary mt-0.5">
+            {index + 1}
           </span>
+
+          <StatusIcon status={log.status} />
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={cn(
+                  "text-sm",
+                  log.status === "failed" && "text-status-error",
+                  log.status === "succeeded" && "text-text-primary",
+                )}
+              >
+                {actionName}
+              </span>
+              {adapted && (
+                <span className="inline-flex items-center gap-0.5 bg-status-warning-bg text-status-warning text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded-full border border-status-warning/30">
+                  <Zap className="w-2.5 h-2.5" />
+                  self-healed
+                </span>
+              )}
+              <span className="ml-auto font-mono text-xs text-text-tertiary tabular-nums">
+                {log.duration_ms > 0 ? `${log.duration_ms}ms` : ""}
+              </span>
+            </div>
+            {adapted && log.adapted_from && log.adapted_to && (
+              <p className="mt-1 text-xs text-text-secondary font-mono">
+                <span className="text-text-tertiary">{log.adapted_from}</span>
+                {" → "}
+                <span className="text-status-success">{log.adapted_to}</span>
+              </p>
+            )}
+            {log.error && (
+              <p className="mt-1 text-xs text-status-error font-mono">{log.error}</p>
+            )}
+          </div>
         </div>
-        {log.status === "adapting" && (
-          <p className="mt-1 text-xs text-status-warning animate-adapting">
-            Detecté un cambio. Resolviendo con visión...
-          </p>
-        )}
-        {adapted && log.adapted_from && log.adapted_to && (
-          <p className="mt-1 text-xs text-text-secondary">
-            Adaptó: <span className="font-mono">{log.adapted_from}</span> →{" "}
-            <span className="font-mono">{log.adapted_to}</span>
-          </p>
-        )}
-        {log.error && (
-          <p className="mt-1 text-xs text-status-error font-mono">{log.error}</p>
-        )}
-      </div>
+      )}
     </motion.li>
   );
 }
@@ -86,12 +142,18 @@ function StepRow({ log, isActive }: { log: ExecutionLog; isActive: boolean }) {
 function StatusIcon({ status }: { status: ExecutionLog["status"] }) {
   switch (status) {
     case "succeeded":
-      return <Check className="w-4 h-4 text-status-success mt-0.5" />;
+      return (
+        <Check className="w-4 h-4 text-status-success mt-0.5 flex-shrink-0" />
+      );
     case "failed":
-      return <X className="w-4 h-4 text-status-error mt-0.5" />;
+      return (
+        <X className="w-4 h-4 text-status-error mt-0.5 flex-shrink-0" />
+      );
     case "retrying":
     case "adapting":
-      return <Loader2 className="w-4 h-4 text-status-warning animate-spin mt-0.5" />;
+      return (
+        <Loader2 className="w-4 h-4 text-status-warning animate-spin mt-0.5 flex-shrink-0" />
+      );
   }
 }
 

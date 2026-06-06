@@ -32,11 +32,19 @@ const config: Config = {
           soft: "hsl(var(--accent-coral-soft))",
           glow: "hsl(var(--accent-coral-glow))",
         },
+        brand: {
+          crimson: "#C8102E",
+          "crimson-dark": "#B40D28",
+          "crimson-text": "#FFFFFF",
+        },
         status: {
           success: "hsl(var(--status-success))",
+          "success-bg": "hsl(var(--status-success-bg))",
           warning: "hsl(var(--status-warning))",
+          "warning-bg": "hsl(var(--status-warning-bg))",
           error: "hsl(var(--status-error))",
           info: "hsl(var(--status-info))",
+          "info-bg": "hsl(var(--status-info-bg))",
         },
       },
       fontFamily: {
@@ -61,10 +69,26 @@ const config: Config = {
           "0%, 100%": { opacity: "0.3" },
           "50%": { opacity: "1" },
         },
+        self_heal: {
+          "0%": { boxShadow: "0 0 0 0 rgba(245, 179, 1, 0.5)" },
+          "70%": { boxShadow: "0 0 0 20px rgba(245, 179, 1, 0)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(245, 179, 1, 0)" },
+        },
+        slide_in_right: {
+          "0%": { opacity: "0", transform: "translateX(16px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        fade_in: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
       },
       animation: {
         "pulse-coral": "pulse_coral 1.5s ease-in-out infinite",
         "adapting": "adapting_pulse 1s ease-in-out infinite",
+        "self-heal": "self_heal 2s ease-out infinite",
+        "slide-in-right": "slide_in_right 0.3s ease-out",
+        "fade-in": "fade_in 0.2s ease-out",
       },
     },
   },
