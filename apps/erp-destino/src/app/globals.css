@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * ERP Destino — Look corporativo intencional.
+ * Blanco + azul SAP-like. Dense. NO premium.
+ * Esto es Sistema B en el demo — el contraste con operator-ui (dark+coral)
+ * es storytelling: "esto es lo que existe hoy. Themis viene a operar encima."
+ * ============================================================ */
+
+@layer base {
+  html {
+    font-size: 14px;
+  }
+
+  body {
+    background: #ffffff;
+    color: #222;
+    font-family: Arial, Helvetica, system-ui, sans-serif;
+  }
+
+  /* Inputs estilo SAP Fiori */
+  input,
+  select,
+  textarea {
+    border: 1px solid #cccccc;
+    background: #ffffff;
+    padding: 4px 6px;
+    font-size: 13px;
+    color: #222;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid #0066a3;
+    outline-offset: -1px;
+    border-color: #0066a3;
+  }
+
+  label {
+    font-size: 12px;
+    color: #555;
+    font-weight: 600;
+  }
+}
