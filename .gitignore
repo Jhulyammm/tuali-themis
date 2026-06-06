@@ -1,0 +1,75 @@
+# ============================================================
+# Themis — Hack4Her 2026
+# Root .gitignore (aplica a todo el workspace)
+# ============================================================
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Environment files — JAMÁS commitear
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Caches
+.cache/
+.turbo/
+.vercel/
+.next/
+
+# Test coverage
+coverage/
+
+# Hackathon-specific (datos locales, NO commitear)
+recordings/local/
+screenshots/local/
+.supabase/
+
+# Solana wallet (NUNCA commitear keys)
+*.keypair.json
+solana-wallet-*.json
+
+# MongoDB local data
+mongo-data/
+
+# Docker
+.docker/
+
+# Plan / personal (no del producto)
+*.local.md
+notes-*.md
+
+# OS junk
+.DS_Store
+ehthumbs.db
+Desktop.ini
+
+# Backup files
+*~
+*.bak
+*.tmp
