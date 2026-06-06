@@ -1,11 +1,24 @@
 # Tareas para Ale — Diseño UI/UX + Pitch (con Marita)
 
 > **Rol:** Diseñadora visual / UI/UX Lead + Co-pitcher.
-> **Total:** ~30h en 48h.
-> **Pipelines:**
-> - **Diseño:** Tú entregas mockup → Marita lo convierte a React.
-> - **Pitch:** Tú + Marita lo arman juntas. Tú llevas la narrativa visual y estructura, Marita la parte técnica y los ensayos.
-> **NO te toca:** crear cuentas (Marita lo hace).
+> **Pipeline diseño:** Tú entregas mockup → Marita lo convierte a React.
+> **Pipeline pitch:** Tú + Marita lo arman juntas. Tú la narrativa visual y estructura, Marita la parte técnica y los ensayos.
+
+---
+
+## 📍 Status actual (lee esto primero)
+
+| Cosa | Estado |
+|------|--------|
+| Cuentas + keys MLH | ✅ Marita las creó |
+| Mockups iniciales (Dashboard, ERP, observación) | ⚠️ Verifica con Marita qué ya pasó |
+| **Recommendations panel (Capa 3) — LA ESTRELLA** | 🔥 Funciona LIVE, falta polish visual |
+| **Pitch deck v0** | ⏳ Tu siguiente foco |
+| Video backup + ensayos | ⏳ Últimas horas |
+
+**Foco AHORA:** mockups que quedan (sobre todo Recommendations panel) + arranque del pitch deck.
+
+---
 
 ---
 

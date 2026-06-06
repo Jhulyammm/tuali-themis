@@ -1,10 +1,25 @@
 # Tareas para Marita — Cuentas + Frontend coding + Pitch (con Ale)
 
 > **Rol:** Frontend Engineer + setup de infraestructura externa + Co-pitcher.
-> **Total:** ~34h en 48h.
-> **Pipelines:**
-> - **Frontend:** Ale te entrega mockup → tú lo conviertes a React + shadcn.
-> - **Pitch:** Tú + Ale lo arman juntas. Ale lleva narrativa visual y memoriza apertura/cierre, tú llevas la parte técnica, screenshots del demo, video backup, y cronómetro en ensayos.
+> **Pipeline frontend:** Ale te entrega mockup → tú lo conviertes a React + shadcn.
+> **Pipeline pitch:** Tú + Ale lo arman juntas. Ale lleva narrativa visual y memoriza apertura/cierre, tú llevas la parte técnica, screenshots del demo, video backup, y cronómetro en ensayos.
+
+---
+
+## 📍 Status actual (lee esto primero)
+
+| Cosa | Estado |
+|------|--------|
+| Cuentas + keys MLH | ✅ Hecho |
+| Scaffold operator-ui + erp-destino + shadcn | ✅ Hecho (Jhulyam lo armó) |
+| Componentes UI base (StepLog, MappingTable, SolanaBadge, etc.) | ✅ Funcionando con backend real |
+| **Polish visual con mockups de Ale** | 🔥 Tu siguiente foco |
+| Screenshots reales para pitch deck | ⏳ Cuando Ale tenga las slides |
+| Video backup del demo | ⏳ Últimas horas (h36-h42) |
+
+**Lee [`MARITA.md`](MARITA.md)** — la guía completa de qué tocar y qué NO. **Foco AHORA:** ir página por página adaptando classes Tailwind a los mockups que Ale te entregue.
+
+---
 
 ---
 
