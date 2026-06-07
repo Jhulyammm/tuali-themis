@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  // CRÍTICO para Vercel monorepo pnpm:
+  // Le dice a Next.js que rastree archivos desde el workspace root, no solo
+  // desde apps/operator-ui. Sin esto, Vercel empaqueta el lambda sin las
+  // workspace deps de packages/agent (Stagehand, Solana, Anthropic, etc) y
+  // crashea con "Cannot find module '@browserbasehq/stagehand'" en runtime.
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   transpilePackages: [
     "@hack4her/agent",
     "@hack4her/db",
