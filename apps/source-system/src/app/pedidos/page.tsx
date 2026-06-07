@@ -1,9 +1,15 @@
 /**
  * Lista de pedidos del proveedor. Vista típica de portal CPG.
+ *
+ * Combina pedidos seed del servidor con pedidos recientes en localStorage
+ * (los que el usuario crea en esta sesión via /pedidos/nuevo). El store
+ * server-side se reinicia entre invocaciones de lambda en Vercel — por eso
+ * el localStorage refleja "lo que acabo de hacer".
  */
 
 import Link from "next/link";
 import { listPedidos } from "@/data/pedidos-store";
+import { RecentPedidosClient } from "./RecentPedidosClient";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +41,10 @@ export default function PedidosListPage() {
         </div>
       </div>
 
+      {/* Pedidos recientes (cliente — localStorage) */}
+      <RecentPedidosClient />
+
+      {/* Pedidos del servidor (seeds permanentes) */}
       <table>
         <thead>
           <tr>
@@ -51,11 +61,7 @@ export default function PedidosListPage() {
         <tbody>
           {pedidos.map((p) => (
             <tr key={p.id}>
-              <td className="font-mono text-vendor-green">
-                <Link href={`/pedidos/${p.id}`} className="hover:underline">
-                  {p.id}
-                </Link>
-              </td>
+              <td className="font-mono text-vendor-green">{p.id}</td>
               <td>{p.cliente_destinatario}</td>
               <td className="font-mono text-xs">{p.rfc_destinatario}</td>
               <td className="font-mono text-xs">{p.fecha_solicitud}</td>

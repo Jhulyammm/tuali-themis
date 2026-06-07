@@ -91,24 +91,38 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // FUENTE DE VERDAD: fetch HTTP directo al startUrl.
-    // No usamos Browserbase para extraer datos — la sesión serverless es muy
-    // frágil. El iframe Browserbase queda solo para el wow visual del demo.
+    // FUENTE DE VERDAD: fetch HTTP directo al startUrl + páginas relacionadas.
+    // El dashboard de un portal CPG es informativo (KPIs, alertas, actividad)
+    // pero NO tiene forms ricos. Para que Claude infiera mappings buenos hay
+    // que darle HTML de páginas con inputs/labels/selects reales: catálogo,
+    // formulario de nuevo pedido, estado de cuenta. Multi-fetch en paralelo.
     let allSnapshots: BrowserSnapshot[] = body.snapshots ?? [];
 
-    try {
-      const directSnapshot = await fetchPageAsSnapshot(body.startUrl);
-      allSnapshots = [...allSnapshots, directSnapshot];
-    } catch (err) {
-      console.warn(
-        "[/api/browser/finalize] direct HTTP fetch failed:",
-        (err as Error).message,
-      );
+    const urlsToFetch = expandStartUrl(body.startUrl);
+    const fetchResults = await Promise.allSettled(
+      urlsToFetch.map((u) => fetchPageAsSnapshot(u)),
+    );
+    for (const result of fetchResults) {
+      if (result.status === "fulfilled") {
+        const snap = result.value;
+        // Solo agregamos snapshots con contenido real (no 404, no vacíos)
+        if (
+          snap.observations.length > 0 ||
+          Object.keys(snap.field_values).length > 0
+        ) {
+          allSnapshots = [...allSnapshots, snap];
+        }
+      } else {
+        console.warn(
+          "[/api/browser/finalize] fetch failed:",
+          (result.reason as Error).message,
+        );
+      }
     }
 
     if (allSnapshots.length === 0) {
       return badRequest(
-        "No pude extraer información del sitio. Verificá que la URL sea válida y accesible.",
+        "No pude extraer información del sitio. Verifica que la URL sea válida y accesible.",
       );
     }
 
@@ -394,4 +408,45 @@ function buildRecording(
     duration_ms: tEnd - t0,
     created_at: new Date(t0).toISOString(),
   };
+}
+
+/**
+ * Expande el startUrl a un conjunto de URLs probables que contienen forms.
+ * Si la URL es un source-system propio (Vercel) o tiene patrón de portal,
+ * agregamos rutas conocidas: /catalogo, /pedidos/nuevo, etc.
+ *
+ * Esto permite a Claude inferir mappings MUCHO más ricos porque ve forms
+ * reales con labels, no solo el dashboard que solo tiene KPIs.
+ */
+function expandStartUrl(startUrl: string): string[] {
+  try {
+    const u = new URL(startUrl);
+    const origin = u.origin;
+    const urls = [startUrl];
+
+    // Detectar si es un source-system propio (Vercel) o demo conocido
+    const isOwnDomain =
+      u.hostname.endsWith(".vercel.app") ||
+      u.hostname === "localhost" ||
+      u.hostname.startsWith("127.0.0.1");
+
+    if (isOwnDomain) {
+      // Agregamos rutas conocidas del source-system Distribuidora del Norte.
+      // Estas tienen forms ricos con labels y inputs reales.
+      const knownPaths = [
+        "/catalogo",
+        "/pedidos/nuevo",
+        "/promociones",
+        "/estado-cuenta",
+      ];
+      for (const path of knownPaths) {
+        const candidate = `${origin}${path}`;
+        if (candidate !== startUrl) urls.push(candidate);
+      }
+    }
+
+    return urls;
+  } catch {
+    return [startUrl];
+  }
 }

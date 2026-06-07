@@ -95,9 +95,36 @@ export default function NuevoPedidoPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { pedido } = (await res.json()) as { pedido: { id: string } };
-      // Mostramos confirmación inline (NO router.push). En Vercel serverless el
-      // store in-memory no sobrevive entre requests, así que /pedidos/[id]
-      // tiraba 404. Esto da feedback inmediato sin depender de persistencia.
+
+      // Persistir client-side en localStorage para que aparezca en /pedidos
+      // (el store globalThis del servidor no sobrevive entre lambdas).
+      try {
+        const stored = localStorage.getItem("ddn.pedidos.recent");
+        const recent: Array<Record<string, unknown>> = stored
+          ? JSON.parse(stored)
+          : [];
+        recent.unshift({
+          id: pedido.id,
+          cliente_destinatario: cliente,
+          rfc_destinatario: rfc,
+          fecha_solicitud: fecha,
+          centro_distribucion: cd,
+          ruta_entrega: ruta,
+          estatus: "confirmado",
+          lineas: body.lineas,
+          ...totals,
+          observaciones,
+          _created_at: new Date().toISOString(),
+        });
+        // Tope de 10 pedidos recientes en localStorage
+        localStorage.setItem(
+          "ddn.pedidos.recent",
+          JSON.stringify(recent.slice(0, 10)),
+        );
+      } catch {
+        // localStorage puede fallar en modo incógnito — silencioso
+      }
+
       setSuccess({
         pedido_id: pedido.id,
         cliente,
