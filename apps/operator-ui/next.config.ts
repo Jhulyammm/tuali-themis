@@ -11,6 +11,33 @@ const nextConfig: NextConfig = {
   // workspace deps de packages/agent (Stagehand, Solana, Anthropic, etc) y
   // crashea con "Cannot find module '@browserbasehq/stagehand'" en runtime.
   outputFileTracingRoot: path.join(__dirname, "../../"),
+  // RED DE SEGURIDAD para Vercel monorepo: fuerza al tracing a incluir
+  // estos node_modules en los lambdas que usan Stagehand/Solana/Mongo.
+  // Sin esto, Vercel a veces omite deps externalizadas en monorepo pnpm.
+  outputFileTracingIncludes: {
+    "/api/browser/**": [
+      "../../node_modules/.pnpm/@browserbasehq+stagehand@**/node_modules/@browserbasehq/stagehand/**",
+      "../../node_modules/.pnpm/@browserbasehq+sdk@**/node_modules/@browserbasehq/sdk/**",
+      "../../node_modules/.pnpm/playwright-core@**/node_modules/playwright-core/**",
+      "../../node_modules/.pnpm/playwright@**/node_modules/playwright/**",
+    ],
+    "/api/execute/**": [
+      "../../node_modules/.pnpm/@browserbasehq+stagehand@**/node_modules/@browserbasehq/stagehand/**",
+      "../../node_modules/.pnpm/@browserbasehq+sdk@**/node_modules/@browserbasehq/sdk/**",
+      "../../node_modules/.pnpm/playwright-core@**/node_modules/playwright-core/**",
+      "../../node_modules/.pnpm/playwright@**/node_modules/playwright/**",
+    ],
+    "/api/playbooks/**": [
+      "../../node_modules/.pnpm/mongodb@**/node_modules/mongodb/**",
+    ],
+    "/api/executions/**": [
+      "../../node_modules/.pnpm/mongodb@**/node_modules/mongodb/**",
+    ],
+    "/api/status/**": [
+      "../../node_modules/.pnpm/mongodb@**/node_modules/mongodb/**",
+      "../../node_modules/.pnpm/@solana+web3.js@**/node_modules/@solana/web3.js/**",
+    ],
+  },
   transpilePackages: [
     "@hack4her/agent",
     "@hack4her/db",
