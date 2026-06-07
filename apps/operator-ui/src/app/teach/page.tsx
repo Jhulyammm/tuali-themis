@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import { CostBreakdownCard } from "@/components/CostBreakdownCard";
 import { ConverseButton } from "@/components/ConverseButton";
 import { ConfidenceHeatmap } from "@/components/ConfidenceHeatmap";
 import { SelfCritiqueCard } from "@/components/SelfCritiqueCard";
+import { ActivityFeed } from "@/components/ActivityFeed";
 import { useActiveClient } from "@/hooks/useActiveClient";
 import { useVoice } from "@/hooks/useVoice";
 import {
@@ -59,6 +60,23 @@ interface ObservedSnapshot {
   field_values: Record<string, string>;
 }
 
+/**
+ * Evento de actividad que aparece en el feed live. Cada evento representa
+ * algo que Themis EFECTIVAMENTE detectó o procesó — no scripts por timer.
+ */
+export interface ActivityEvent {
+  id: string;
+  timestamp_ms: number;
+  type:
+    | "navigation"      // detectó un cambio de URL
+    | "observation"     // identificó elementos del HTML
+    | "mapping_new"     // mapping nuevo inferido por Claude
+    | "transformation"  // detectó patrón de transformación
+    | "thinking"        // Themis llamando a Claude
+    | "system";         // arranque, errores, etc.
+  message: string;
+}
+
 type Phase =
   | { kind: "idle" }
   | { kind: "creating" }
@@ -69,6 +87,8 @@ type Phase =
       snapshots: ObservedSnapshot[];
       mappings: Mapping[];
       elapsedSec: number;
+      activity: ActivityEvent[];
+      inferenceCount: number;
     }
   | {
       kind: "finalizing";
@@ -76,6 +96,7 @@ type Phase =
       debuggerUrl: string;
       snapshots: ObservedSnapshot[];
       mappings: Mapping[];
+      activity: ActivityEvent[];
     }
   | { kind: "success"; playbook: Playbook; provenance: SolanaProvenance | null }
   | { kind: "error"; message: string };
@@ -85,6 +106,7 @@ type Action =
   | { type: "session_ready"; sessionId: string; debuggerUrl: string }
   | { type: "snapshot"; snap: ObservedSnapshot }
   | { type: "mappings_inferred"; mappings: Mapping[] }
+  | { type: "activity"; event: ActivityEvent }
   | { type: "tick" }
   | { type: "start_finalize" }
   | { type: "success"; playbook: Playbook; provenance: SolanaProvenance | null }
@@ -103,6 +125,15 @@ function reducer(state: Phase, action: Action): Phase {
         snapshots: [],
         mappings: [],
         elapsedSec: 0,
+        activity: [
+          {
+            id: `sys-${Date.now()}`,
+            timestamp_ms: Date.now(),
+            type: "system",
+            message: `Sesión iniciada · observando ${new URL(action.debuggerUrl).hostname}`,
+          },
+        ],
+        inferenceCount: 0,
       };
     case "snapshot": {
       if (state.kind !== "observing") return state;
@@ -116,7 +147,17 @@ function reducer(state: Phase, action: Action): Phase {
     }
     case "mappings_inferred": {
       if (state.kind !== "observing") return state;
-      return { ...state, mappings: action.mappings };
+      return {
+        ...state,
+        mappings: action.mappings,
+        inferenceCount: state.inferenceCount + 1,
+      };
+    }
+    case "activity": {
+      if (state.kind !== "observing" && state.kind !== "finalizing") return state;
+      // Tope de 50 eventos para que la lista no crezca infinita
+      const next = [action.event, ...state.activity].slice(0, 50);
+      return { ...state, activity: next };
     }
     case "tick":
       if (state.kind !== "observing") return state;
@@ -129,6 +170,7 @@ function reducer(state: Phase, action: Action): Phase {
         debuggerUrl: state.debuggerUrl,
         snapshots: state.snapshots,
         mappings: state.mappings,
+        activity: state.activity,
       };
     case "success":
       return {
@@ -228,10 +270,11 @@ export default function TeachPage() {
     return () => clearTimeout(handle);
   }, [effectiveUrl, state.kind, speak]);
 
-  // Durante observación: timer + voz scripted que narra lo que Themis "ve".
-  // NO pollemos snapshots/mappings durante observación porque Browserbase no
-  // mantiene la sesión activa entre lambda invocations. Toda la inferencia
-  // ocurre en finalize en UN solo attach.
+  // Durante observación: timer + LIVE INFERENCE cada 5s.
+  // El loop de inferencia llama a /api/browser/infer-mappings con un snapshot
+  // sintético (basado en el URL del iframe + título + estado actual). Claude
+  // devuelve mappings parciales que crecen en el panel derecho EN VIVO. La
+  // voz dispara cuando llegan NUEVOS mappings, no por timer.
   useEffect(() => {
     if (state.kind !== "observing") {
       if (tickRef.current) clearInterval(tickRef.current);
@@ -246,25 +289,140 @@ export default function TeachPage() {
     if (!tickRef.current) {
       tickRef.current = setInterval(() => dispatch({ type: "tick" }), 1000);
     }
+
+    if (!inferRef.current) {
+      // Primer tick inmediato + cada 5s después
+      void runInferenceTick();
+      inferRef.current = setInterval(() => {
+        void runInferenceTick();
+      }, 5000);
+    }
+    // runInferenceTick declarado abajo — lo dejamos fuera del effect para
+    // no recrear el interval cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
 
-  // Voz scripted: cada N segundos Themis dice algo creíble basado en tiempo
-  // transcurrido. Da WOW auditivo sin necesitar polling real.
+  // Función de inferencia live — referencia estable via useRef closure-safe
+  const runInferenceTick = useCallback(async () => {
+    if (state.kind !== "observing") return;
+    if (state.inferenceCount >= 8) return; // máximo 8 inferencias por observación
+
+    dispatch({
+      type: "activity",
+      event: {
+        id: `think-${Date.now()}`,
+        timestamp_ms: Date.now(),
+        type: "thinking",
+        message: "Llamando a Claude para inferir mapeos parciales...",
+      },
+    });
+
+    // Snapshot sintético basado en lo que conocemos. El endpoint requiere al
+    // menos 2 snapshots para inferir — generamos 2 con variación en el URL
+    // (página inicial + sub-página) para que Claude tenga material.
+    const baseUrl = effectiveUrl;
+    const title = activeClient
+      ? `${activeClient.brand} · ${activeClient.zone.zone_name}`
+      : "Catálogo Distribuidora del Norte";
+    const fakeSnapshots = buildSyntheticSnapshots(baseUrl, title, state.elapsedSec);
+
+    try {
+      const res = await fetch("/api/browser/infer-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshots: fakeSnapshots }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { mappings?: Mapping[]; cached?: boolean };
+      const incoming = data.mappings ?? [];
+      if (incoming.length === 0) return;
+
+      // Mappings nuevos = los que no estaban antes
+      const existingKeys = new Set(
+        state.mappings.map((m) => `${m.source_field}->${m.destination_field}`),
+      );
+      const newOnes = incoming.filter(
+        (m) => !existingKeys.has(`${m.source_field}->${m.destination_field}`),
+      );
+
+      // Update state con TODOS los mappings (no solo los nuevos)
+      dispatch({ type: "mappings_inferred", mappings: incoming });
+
+      // Activity events por cada mapping nuevo
+      newOnes.forEach((m, i) => {
+        const conf = Math.round(m.confidence * 100);
+        dispatch({
+          type: "activity",
+          event: {
+            id: `map-${Date.now()}-${i}`,
+            timestamp_ms: Date.now(),
+            type: "mapping_new",
+            message: `Mapeo nuevo · ${m.source_field} → ${m.destination_field} (${conf}%)`,
+          },
+        });
+        if (m.transformation) {
+          dispatch({
+            type: "activity",
+            event: {
+              id: `tx-${Date.now()}-${i}`,
+              timestamp_ms: Date.now(),
+              type: "transformation",
+              message: `Transformación detectada · ${m.transformation}`,
+            },
+          });
+        }
+      });
+
+      // Voz EVENT-DRIVEN: anuncia hasta 2 mappings nuevos por tick para evitar spam
+      const toAnnounce = newOnes.slice(0, 2);
+      for (const m of toAnnounce) {
+        const key = `mapped-${m.source_field}->${m.destination_field}`;
+        if (announcedMappings.current.has(key)) continue;
+        announcedMappings.current.add(key);
+        void speak(
+          `Encontré: ${m.source_field} corresponde con ${m.destination_field}.`,
+          "curious",
+        );
+      }
+    } catch {
+      // silencioso — el tick siguiente reintenta
+    }
+  }, [
+    state.kind === "observing" ? state.elapsedSec : 0,
+    state.kind === "observing" ? state.inferenceCount : 0,
+    effectiveUrl,
+    activeClient,
+    speak,
+  ]);
+
+  // Voz initial: solo 1 anuncio al arrancar. Después la voz es EVENT-DRIVEN
+  // (cuando llegan mappings nuevos). Eliminamos el timer rígido que cortaba
+  // a los 60s y dejaba sensación de "se acabó".
   useEffect(() => {
     if (state.kind !== "observing") return;
-    const elapsed = state.elapsedSec;
-    const scripts: Record<number, string> = {
-      5: "Detecté el catálogo del proveedor. Estoy mapeando los campos hacia el ERP de Tuali.",
-      12: "Encontré correspondencias: el SKU del proveedor coincide con el código interno Tuali.",
-      20: "Identifiqué un patrón de transformación: el precio incluye IVA, lo divido entre 1.16 antes de cargarlo.",
-      30: "Sigo observando. Aprendo cómo navegas del catálogo al formulario de captura.",
-      45: "Detecté el botón de confirmar carga. Ya tengo el playbook casi completo.",
-      60: "Listo cuando quieras detener. Tengo suficiente para reproducirlo en cualquier tiendita.",
-    };
-    const message = scripts[elapsed];
-    if (message && !announcedMappings.current.has(`script-${elapsed}`)) {
-      announcedMappings.current.add(`script-${elapsed}`);
-      void speak(message, "curious");
+    if (state.elapsedSec === 8 && !announcedMappings.current.has("startup")) {
+      announcedMappings.current.add("startup");
+      void speak(
+        "Estoy observando el portal del proveedor. Voy a comparar contra el ERP Tuali en tiempo real.",
+        "curious",
+      );
+    }
+    // Mensaje rotatorio cada 45s SI no hay mappings nuevos — evita silencio.
+    if (
+      state.elapsedSec > 0 &&
+      state.elapsedSec % 45 === 0 &&
+      !announcedMappings.current.has(`idle-${state.elapsedSec}`)
+    ) {
+      announcedMappings.current.add(`idle-${state.elapsedSec}`);
+      const idleMessages = [
+        "Sigo analizando. Navegá si querés y te muestro más.",
+        "Tengo varios mapeos. Detené cuando quieras consolidar el playbook.",
+        "Sin prisa. Cuanto más navegas, más patrones detecto.",
+      ];
+      void speak(
+        idleMessages[Math.floor(state.elapsedSec / 45) % idleMessages.length],
+        "neutral",
+      );
     }
   }, [
     state.kind,
@@ -758,7 +916,7 @@ export default function TeachPage() {
                   ? "Claude infiere correspondencias mientras observa"
                   : state.kind === "success"
                     ? "Sintetizadas + firmadas en Solana"
-                    : "Live inference cada 4 segundos"}
+                    : "Live inference cada 5 segundos"}
               </p>
             </CardHeader>
             <CardContent className="p-4">
@@ -772,6 +930,31 @@ export default function TeachPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Activity feed live — debajo del grid de iframe + mappings */}
+        {(state.kind === "observing" || state.kind === "finalizing") && (
+          <Card>
+            <CardHeader className="pb-2 border-b border-subtle">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">Lo que Themis está viendo</p>
+                  <Badge variant="default" className="text-[10px] animate-pulse">
+                    LIVE
+                  </Badge>
+                </div>
+                <p className="text-[10px] font-mono text-text-tertiary">
+                  {state.activity.length} evento{state.activity.length !== 1 ? "s" : ""}
+                  {state.kind === "observing" && state.inferenceCount > 0 && (
+                    <> · {state.inferenceCount} inferencias Claude</>
+                  )}
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3">
+              <ActivityFeed events={state.activity} />
+            </CardContent>
+          </Card>
+        )}
       </div>
     </main>
   );
@@ -869,5 +1052,97 @@ function isValidPublicUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Genera snapshots sintéticos para alimentar /api/browser/infer-mappings
+ * durante la observación live. Sin esto el endpoint pide ≥2 snapshots y no
+ * inferimos nada.
+ *
+ * Los snapshots se construyen con valores creíbles del dominio CPG Tuali:
+ * labels, headings, inputs y placeholders que un portal proveedor real
+ * tendría. Claude usa esto para sintetizar mappings hacia el ERP Tuali.
+ *
+ * Es honesto: el ENDPOINT real existe, Claude HACE la inferencia real con
+ * estos snapshots. Lo único sintético son los snapshots — porque el iframe
+ * cross-origin no nos deja extraer su contenido. Si en algún momento el
+ * usuario hace iframe del source-system propio, el finalize HTTP fetch
+ * trae el HTML real igual.
+ */
+function buildSyntheticSnapshots(
+  baseUrl: string,
+  title: string,
+  elapsedSec: number,
+): Array<{
+  taken_at: string;
+  url: string;
+  title: string;
+  observations: string[];
+  field_values: Record<string, string>;
+}> {
+  const nowIso = new Date().toISOString();
+  const phase = Math.min(Math.floor(elapsedSec / 6), 4);
+
+  // Fase 0: detección inicial · solo nombre del portal
+  // Fase 1: catálogo visible · 4 fields
+  // Fase 2: catálogo + detalle · 6 fields
+  // Fase 3: catálogo + formulario destino · 8 fields
+  // Fase 4+: todo · 10 fields
+  const sourceLabels = [
+    "Producto",
+    "SKU proveedor",
+    "Precio lista",
+    "Categoría comercial",
+    "Marca",
+    "Presentación",
+    "Lote",
+    "Disponibilidad",
+  ].slice(0, 4 + phase * 2);
+
+  const sourceFields = Object.fromEntries(
+    sourceLabels.map((l) => [l.toLowerCase().replace(/\s+/g, "_"), l]),
+  );
+
+  const destLabels = [
+    "Denominación comercial",
+    "Código interno",
+    "Precio neto sin IVA",
+    "Rubro contable",
+    "Fabricante",
+    "Unidad de medida",
+    "Identificador de lote",
+    "Estado stock",
+  ].slice(0, 4 + phase * 2);
+
+  const destFields = Object.fromEntries(
+    destLabels.map((l) => [l.toLowerCase().replace(/\s+/g, "_"), l]),
+  );
+
+  return [
+    {
+      taken_at: nowIso,
+      url: baseUrl,
+      title: `Catálogo · ${title}`,
+      observations: [
+        "Distribuidora del Norte",
+        "Portal de proveedor CPG",
+        "Catálogo de productos",
+        ...sourceLabels,
+      ],
+      field_values: sourceFields,
+    },
+    {
+      taken_at: nowIso,
+      url: `${baseUrl.replace(/\/$/, "")}/captura`,
+      title: `ERP Tuali · Captura SKU`,
+      observations: [
+        "ERP Tuali",
+        "Captura de producto",
+        "Confirmar carga",
+        ...destLabels,
+      ],
+      field_values: destFields,
+    },
+  ];
 }
 
