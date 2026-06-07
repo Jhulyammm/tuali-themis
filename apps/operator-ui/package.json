@@ -12,20 +12,27 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
+    "@browserbasehq/sdk": "^2.13.0",
+    "@browserbasehq/stagehand": "^2.0.0",
+    "@google/generative-ai": "^0.21.0",
     "@hack4her/agent": "workspace:*",
     "@hack4her/db": "workspace:*",
     "@hack4her/playbooks": "workspace:*",
     "@radix-ui/react-slot": "^1.1.0",
+    "@solana/web3.js": "^1.95.0",
     "ai": "^4.0.0",
+    "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.460.0",
+    "mongodb": "^6.10.0",
     "next": "^15.0.0",
     "openai": "^4.70.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^2.5.0"
+    "tailwind-merge": "^2.5.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
