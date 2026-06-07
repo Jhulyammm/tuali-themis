@@ -21,7 +21,12 @@ import {
 } from "@solana/web3.js";
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
-import type { Playbook, SolanaProvenance } from "@hack4her/playbooks";
+import type {
+  Mapping,
+  MappingSignature,
+  Playbook,
+  SolanaProvenance,
+} from "@hack4her/playbooks";
 
 // ============================================================
 // Constants
@@ -103,6 +108,70 @@ export class SolanaProvenanceClient {
       slot,
       registered_at: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Firma cada mapping individualmente en Solana. Esto es el wow técnico
+   * más profundo: en vez de un solo hash del playbook, cada correspondencia
+   * source→destination tiene su propia tx verificable.
+   *
+   * Devuelve los mappings con `signature` poblada cuando triunfó, sin
+   * `signature` cuando falló. Tirar 10 txs paralelas en devnet toma ~3-5s.
+   *
+   * Útil para mappings de alta confianza únicamente — los <70% NO se firman
+   * y quedan marcados para revisión humana (anti-hallucination).
+   */
+  async signMappings(
+    mappings: Mapping[],
+    options: { minConfidence?: number } = {},
+  ): Promise<Mapping[]> {
+    const min = options.minConfidence ?? 0.7;
+    const tasks = mappings.map(async (m): Promise<Mapping> => {
+      if (m.confidence < min) return m;
+      try {
+        const canonical = JSON.stringify({
+          source_field: m.source_field,
+          source_selector_intent: m.source_selector_intent,
+          destination_field: m.destination_field,
+          destination_selector_intent: m.destination_selector_intent,
+          transformation: m.transformation ?? "",
+        });
+        const hash = sha256Hex(canonical);
+        const memo = `themis:mapping:${hash.slice(0, 32)}`;
+
+        const ix = new TransactionInstruction({
+          keys: [
+            { pubkey: this.wallet.publicKey, isSigner: true, isWritable: false },
+          ],
+          programId: MEMO_PROGRAM_ID,
+          data: Buffer.from(memo, "utf-8"),
+        });
+        const tx = new Transaction().add(ix);
+        const sig = await sendAndConfirmTransaction(
+          this.connection,
+          tx,
+          [this.wallet],
+          { commitment: "confirmed" },
+        );
+        const slot = await this.connection.getSlot("confirmed");
+        const signature: MappingSignature = {
+          hash,
+          tx_signature: sig,
+          explorer_url: this.explorerUrl(sig),
+          slot,
+          signed_at: new Date().toISOString(),
+        };
+        return { ...m, signature };
+      } catch (err) {
+        console.warn(
+          `[solana] mapping sign failed for ${m.source_field}→${m.destination_field}:`,
+          (err as Error).message.slice(0, 80),
+        );
+        return m;
+      }
+    });
+
+    return Promise.all(tasks);
   }
 
   /**

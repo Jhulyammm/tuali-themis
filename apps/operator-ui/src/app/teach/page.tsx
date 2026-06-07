@@ -19,6 +19,10 @@ import { MappingTable } from "@/components/MappingTable";
 import { VoiceIndicator } from "@/components/VoiceIndicator";
 import { BrowserViewer } from "@/components/BrowserViewer";
 import { SolanaBadge } from "@/components/SolanaBadge";
+import { CostBreakdownCard } from "@/components/CostBreakdownCard";
+import { ConverseButton } from "@/components/ConverseButton";
+import { ConfidenceHeatmap } from "@/components/ConfidenceHeatmap";
+import { SelfCritiqueCard } from "@/components/SelfCritiqueCard";
 import { useVoice } from "@/hooks/useVoice";
 import {
   Square,
@@ -30,6 +34,7 @@ import {
   Sparkles,
   Globe,
   Link as LinkIcon,
+  Brain,
 } from "lucide-react";
 import type {
   Mapping,
@@ -132,10 +137,24 @@ function reducer(state: Phase, action: Action): Phase {
   }
 }
 
+interface RecallSuggestion {
+  playbook_id: string;
+  playbook_name: string;
+  source_url: string;
+  destination_url: string;
+  mappings: Mapping[];
+  mapping_count: number;
+  created_at: string;
+  match_strength: number;
+}
+
 export default function TeachPage() {
   const [state, dispatch] = useReducer(reducer, { kind: "idle" } as Phase);
   const [urlMode, setUrlMode] = useState<"suggested" | "custom">("suggested");
   const [customUrl, setCustomUrl] = useState("");
+  const [recall, setRecall] = useState<RecallSuggestion[] | null>(null);
+  const [preloadRecall, setPreloadRecall] = useState(false);
+  const recallSpokenRef = useRef<Set<string>>(new Set());
   const { speak, isPlaying, unlock } = useVoice();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inferRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -155,6 +174,52 @@ export default function TeachPage() {
       if (tickRef.current) clearInterval(tickRef.current);
     };
   }, []);
+
+  // Cross-cliente recall: cuando cambiamos la URL en idle, le preguntamos a la
+  // memoria si ya vimos un sitio parecido. Si sí, mostramos banner "Ya vi esto".
+  // Debounced 700ms para no spamear si tipean rápido.
+  useEffect(() => {
+    if (state.kind !== "idle" && state.kind !== "error") return;
+    if (!effectiveUrl || !effectiveUrl.startsWith("http")) {
+      setRecall(null);
+      return;
+    }
+
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/recall", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceUrl: effectiveUrl }),
+        });
+        if (!res.ok) {
+          setRecall(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          found: boolean;
+          suggestions: RecallSuggestion[];
+        };
+        setRecall(data.found ? data.suggestions : null);
+
+        if (
+          data.found &&
+          data.suggestions[0] &&
+          !recallSpokenRef.current.has(data.suggestions[0].playbook_id)
+        ) {
+          recallSpokenRef.current.add(data.suggestions[0].playbook_id);
+          void speak(
+            `Ya he visto este sitio. Tengo ${data.suggestions[0].mapping_count} mapeos guardados de antes.`,
+            "curious",
+          );
+        }
+      } catch {
+        setRecall(null);
+      }
+    }, 700);
+
+    return () => clearTimeout(handle);
+  }, [effectiveUrl, state.kind, speak]);
 
   // Durante observación: timer + voz scripted que narra lo que Themis "ve".
   // NO pollemos snapshots/mappings durante observación porque Browserbase no
@@ -192,7 +257,7 @@ export default function TeachPage() {
     const message = scripts[elapsed];
     if (message && !announcedMappings.current.has(`script-${elapsed}`)) {
       announcedMappings.current.add(`script-${elapsed}`);
-      void speak(message);
+      void speak(message, "curious");
     }
   }, [
     state.kind,
@@ -208,9 +273,13 @@ export default function TeachPage() {
     if (urlMode === "custom") {
       void speak(
         `Iniciando navegador en ${hostnameOf(effectiveUrl)}. Espérame un momento.`,
+        "firm",
       );
     } else {
-      void speak("Iniciando navegador en Browserbase. Espérame un momento.");
+      void speak(
+        "Iniciando navegador en Browserbase. Espérame un momento.",
+        "firm",
+      );
     }
 
     try {
@@ -232,9 +301,18 @@ export default function TeachPage() {
         sessionId: data.sessionId,
         debuggerUrl: data.debuggerUrl,
       });
-      void speak(
-        "Listo. Empezá tu proceso. Yo voy infiriendo los mapeos en tiempo real.",
-      );
+      if (preloadRecall && recall && recall[0]) {
+        dispatch({ type: "mappings_inferred", mappings: recall[0].mappings });
+        void speak(
+          `Precargué ${recall[0].mapping_count} mapeos de memoria. Voy a refinarlos viendo lo que hagas.`,
+          "firm",
+        );
+      } else {
+        void speak(
+          "Listo. Empieza tu proceso. Yo voy infiriendo los mapeos en tiempo real.",
+          "curious",
+        );
+      }
     } catch (err) {
       dispatch({ type: "error", message: (err as Error).message });
     }
@@ -248,7 +326,10 @@ export default function TeachPage() {
     const finalStartUrl = effectiveUrl;
 
     dispatch({ type: "start_finalize" });
-    void speak("Sintetizando el playbook completo y firmando en Solana.");
+    void speak(
+      "Sintetizando el playbook completo y firmando en Solana.",
+      "firm",
+    );
 
     try {
       const res = await fetch("/api/browser/finalize", {
@@ -276,10 +357,11 @@ export default function TeachPage() {
       const mappingCount = data.playbook.mappings?.length ?? 0;
       void speak(
         `Playbook listo con ${mappingCount} mapeos. ${data.provenance ? "Firmado en Solana." : ""}`,
+        "triumphant",
       );
     } catch (err) {
       dispatch({ type: "error", message: (err as Error).message });
-      void speak("Hubo un error extrayendo el playbook.");
+      void speak("Hubo un error extrayendo el playbook.", "alert");
     }
   };
 
@@ -403,6 +485,68 @@ export default function TeachPage() {
           </Card>
         )}
 
+        {/* Cross-cliente recall — "Ya vi esto antes" */}
+        {(state.kind === "idle" || state.kind === "error") &&
+          recall &&
+          recall[0] && (
+            <Card className="border-coral/30 bg-gradient-to-r from-coral/5 via-white to-white">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-coral/10 grid place-items-center shrink-0">
+                    <Brain className="w-5 h-5 text-coral" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge className="bg-coral/10 text-coral border-coral/20 font-mono uppercase tracking-widest text-[10px]">
+                        Memoria
+                      </Badge>
+                      <p className="text-sm font-medium text-text-primary">
+                        Ya he visto este sitio
+                      </p>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1">
+                      Aprendí{" "}
+                      <span className="font-semibold text-coral">
+                        {recall[0].mapping_count} mapeos
+                      </span>{" "}
+                      de{" "}
+                      <span className="font-mono text-text-primary">
+                        {recall[0].playbook_name}
+                      </span>
+                      . Puedo usarlos como base para refinarlos viendo tu
+                      proceso.
+                    </p>
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setPreloadRecall(true)}
+                        className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                          preloadRecall
+                            ? "bg-coral text-white border-coral"
+                            : "bg-white text-text-secondary border-border hover:bg-coral/5 hover:border-coral/40 hover:text-coral"
+                        }`}
+                      >
+                        {preloadRecall
+                          ? "✓ Mapeos precargados"
+                          : "Usar como base"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreloadRecall(false);
+                          setRecall(null);
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg text-text-tertiary hover:text-text-secondary"
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
         {/* Banners por fase */}
         {state.kind === "creating" && (
           <Card className="border-coral/40 bg-coral/5">
@@ -437,28 +581,48 @@ export default function TeachPage() {
         )}
 
         {state.kind === "success" && (
-          <Card className="border-status-success/40 bg-status-success/5">
-            <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex-1 min-w-0 flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-status-success shrink-0" />
-                <div>
-                  <p className="text-sm font-medium">
-                    Playbook extraído · Persistido en memoria
-                  </p>
-                  <p className="text-xs text-text-secondary mt-0.5">
-                    <span className="font-medium">{state.playbook.name}</span>{" "}
-                    — {state.playbook.mappings?.length ?? 0} mapeos ·{" "}
-                    {state.playbook.steps.length} pasos
-                  </p>
+          <>
+            <Card className="border-status-success/40 bg-status-success/5">
+              <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-0 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-status-success shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">
+                      Playbook extraído · Persistido en memoria
+                    </p>
+                    <p className="text-xs text-text-secondary mt-0.5">
+                      <span className="font-medium">{state.playbook.name}</span>{" "}
+                      — {state.playbook.mappings?.length ?? 0} mapeos ·{" "}
+                      {state.playbook.steps.length} pasos
+                    </p>
+                  </div>
                 </div>
-              </div>
-              {state.provenance ? (
-                <SolanaBadge provenance={state.provenance} />
-              ) : (
-                <Badge variant="warning">Solana skipped</Badge>
-              )}
-            </CardContent>
-          </Card>
+                {state.provenance ? (
+                  <SolanaBadge provenance={state.provenance} />
+                ) : (
+                  <Badge variant="warning">Solana skipped</Badge>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Self-examen — Themis se evalúa honestamente */}
+            {state.playbook.self_critique && (
+              <SelfCritiqueCard critique={state.playbook.self_critique} />
+            )}
+
+            {/* Confidence heatmap — la transparencia que ningún otro equipo mostrará */}
+            {state.playbook.mappings && state.playbook.mappings.length > 0 && (
+              <ConfidenceHeatmap mappings={state.playbook.mappings} />
+            )}
+
+            {/* Cost transparency — el wow factor #1 para jurado/CFO */}
+            {state.playbook.cost_breakdown && (
+              <CostBreakdownCard
+                cost={state.playbook.cost_breakdown}
+                latency={state.playbook.latency_breakdown}
+              />
+            )}
+          </>
         )}
 
         {state.kind === "error" && (
@@ -473,6 +637,38 @@ export default function TeachPage() {
                   {state.message}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Conversación bidireccional — el jurado le pregunta a Themis */}
+        {(state.kind === "observing" ||
+          state.kind === "finalizing" ||
+          state.kind === "success") && (
+          <Card className="border-coral/20 bg-gradient-to-r from-coral/5 via-white to-white">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary">
+                  Pregúntale a Themis
+                </p>
+                <Badge className="bg-coral/10 text-coral border-coral/20 text-[10px]">
+                  Capa 2 · bidireccional
+                </Badge>
+              </div>
+              <ConverseButton
+                context={{
+                  currentUrl: effectiveUrl,
+                  mappings:
+                    state.kind === "observing" || state.kind === "finalizing"
+                      ? state.mappings
+                      : state.kind === "success"
+                        ? state.playbook.mappings
+                        : undefined,
+                  playbookName:
+                    state.kind === "success" ? state.playbook.name : undefined,
+                  phase: state.kind,
+                }}
+              />
             </CardContent>
           </Card>
         )}

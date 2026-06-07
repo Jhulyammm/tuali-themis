@@ -162,6 +162,7 @@ export default function ExecutePage() {
     dispatch({ type: "start" });
     void speak(
       "Arrancando ejecución. Voy a manejar el navegador yo solita ahora.",
+      "firm",
     );
 
     try {
@@ -242,6 +243,7 @@ export default function ExecutePage() {
           lastAnnouncedHealCount = healCount;
           void speak(
             "Detecté un cambio en la página. Adaptando con visión.",
+            "alert",
           );
         }
 
@@ -249,13 +251,14 @@ export default function ExecutePage() {
         if (poll.done) {
           if (poll.error) {
             dispatch({ type: "error", message: poll.error });
-            void speak("La ejecución falló.");
+            void speak("La ejecución falló.", "alert");
           } else if (poll.execution) {
             dispatch({ type: "done", execution: poll.execution });
             void speak(
               poll.execution.status === "succeeded"
                 ? "Ejecución completada. Datos transferidos al sistema destino."
                 : "La ejecución terminó con errores. Revisa el log.",
+              poll.execution.status === "succeeded" ? "triumphant" : "alert",
             );
           }
           break;
@@ -263,7 +266,7 @@ export default function ExecutePage() {
       }
     } catch (err) {
       dispatch({ type: "error", message: (err as Error).message });
-      void speak("La ejecución falló.");
+      void speak("La ejecución falló.", "alert");
     }
   };
 

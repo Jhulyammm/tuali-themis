@@ -35,7 +35,7 @@ export function MappingTable({ mappings, className }: MappingTableProps) {
             <th className="text-left px-4 py-3 font-medium">Mapeo</th>
             <th className="text-left px-4 py-3 font-medium">Confidence</th>
             <th className="text-left px-4 py-3 font-medium">Transformación</th>
-            <th className="text-left px-4 py-3 font-medium">Ejemplo</th>
+            <th className="text-left px-4 py-3 font-medium">Firma</th>
           </tr>
         </thead>
         <tbody>
@@ -71,10 +71,25 @@ export function MappingTable({ mappings, className }: MappingTableProps) {
                   )}
                 </td>
 
-                <td className="px-4 py-3 font-mono text-xs text-text-secondary max-w-[140px]">
-                  {m.examples.length > 0
-                    ? `"${m.examples[0].source_value}" = "${m.examples[0].destination_value}"`
-                    : "—"}
+                <td className="px-4 py-3 font-mono text-xs max-w-[180px]">
+                  {m.signature ? (
+                    <a
+                      href={m.signature.explorer_url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex items-center gap-1 text-coral hover:text-coral-dark hover:underline"
+                      title={`tx ${m.signature.tx_signature}`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-coral animate-pulse" />
+                      <span className="truncate">
+                        {m.signature.tx_signature.slice(0, 8)}…
+                      </span>
+                    </a>
+                  ) : (
+                    <span className="text-text-tertiary text-[10px] italic">
+                      pendiente
+                    </span>
+                  )}
                 </td>
               </motion.tr>
             ))}

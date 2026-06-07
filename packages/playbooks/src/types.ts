@@ -61,6 +61,16 @@ export interface Mapping {
   confidence: number; // 0.0 - 1.0, set by Claude when extracting
   transformation?: string; // natural-language description if value transforms
   examples: MappingExample[];
+  /** Per-mapping on-chain signature (Capa 6) — cada mapping firmado por separado */
+  signature?: MappingSignature;
+}
+
+export interface MappingSignature {
+  hash: string;
+  tx_signature: string;
+  explorer_url: string;
+  slot: number;
+  signed_at: string;
 }
 
 export interface MappingExample {
@@ -87,6 +97,38 @@ export interface Playbook {
   created_at: string;
   /** Hash de los mappings + steps, registrado en Solana (Capa 6) */
   provenance?: SolanaProvenance;
+  /** Costos de aprendizaje (USD) breakdown por capa */
+  cost_breakdown?: CostBreakdown;
+  /** Latencia (ms) breakdown por capa */
+  latency_breakdown?: LatencyBreakdown;
+  /** Self-examen — crítica honesta que Themis se hace post-aprendizaje */
+  self_critique?: PlaybookCritique;
+}
+
+export interface PlaybookCritique {
+  overall_grade: "A+" | "A" | "B" | "C" | "D" | "F";
+  summary: string;
+  weakest_mapping?: string | null;
+  risks: string[];
+  improvements: string[];
+}
+
+export interface CostBreakdown {
+  capa1_claude_usd: number;
+  capa1_browserbase_usd: number;
+  capa2_elevenlabs_usd: number;
+  capa2_whisper_usd: number;
+  capa3_gemini_usd: number;
+  capa6_solana_usd: number;
+  total_usd: number;
+}
+
+export interface LatencyBreakdown {
+  total_ms: number;
+  claude_ms: number;
+  browserbase_ms: number;
+  solana_ms: number;
+  other_ms: number;
 }
 
 // ============================================================
@@ -139,6 +181,10 @@ export interface Execution {
   logs: ExecutionLog[];
   started_at: string;
   ended_at?: string;
+  /** Costos USD de esta ejecución (Browserbase + Stagehand/Claude) */
+  cost_breakdown?: CostBreakdown;
+  /** Latencias ms breakdown */
+  latency_breakdown?: LatencyBreakdown;
 }
 
 // ============================================================

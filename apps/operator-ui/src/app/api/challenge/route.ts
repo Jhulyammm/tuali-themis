@@ -1,28 +1,22 @@
 /**
- * POST /api/browser/finalize — cierra observación, extrae playbook, firma on-chain.
+ * POST /api/challenge — Reto del Jurado.
  *
- * STATELESS: el cliente envía sessionId + snapshots + startUrl en el body.
+ * Recibe una URL ARBITRARIA que Themis nunca vio, hace HTTP fetch + parse,
+ * invoca a Claude para inferir mappings y firma en Solana. Todo en una sola
+ * call, sin iframe Browserbase, sin operador humano observando.
  *
- * Body:
- *   {
- *     sessionId: string,
- *     snapshots: BrowserSnapshot[],
- *     startUrl: string,
- *     audioTranscript?: string,
- *     name?: string,
- *   }
+ * Esto es la prueba viva de que el aprendizaje NO está hardcoded:
+ * el jurado pasa cualquier URL durante el demo, Themis devuelve playbook + ROI
+ * en <30s. Ningún otro equipo se atreve a hacer esto.
  *
- * Returns: { playbook, provenance, snapshotsCount }
+ * Body: { url: string, hint?: string }
+ * Returns: { playbook, provenance, snapshotsCount, fetchMs }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { extractPlaybookWithMetrics } from "@hack4her/agent/playbook";
 import { critiquePlaybook } from "@hack4her/agent/playbook/critique";
 import { createSolanaClientFromEnv } from "@hack4her/agent/blockchain";
-import {
-  closeSession,
-  type BrowserSnapshot,
-} from "@hack4her/agent/browser";
 import {
   saveSavedPlaybook,
   claudeCost,
@@ -46,90 +40,76 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-interface FinalizeBody {
-  sessionId: string;
-  snapshots: BrowserSnapshot[];
-  startUrl: string;
-  audioTranscript?: string;
-  name?: string;
+const URL_PATTERN = /^https?:\/\/[^\s<>"']+$/i;
+
+interface ChallengeBody {
+  url: string;
+  hint?: string;
 }
 
-const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+interface BrowserSnapshot {
+  taken_at: string;
+  url: string;
+  title: string;
+  observations: string[];
+  field_values: Record<string, string>;
+}
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
-  if (!rateLimit(`finalize:${ip}`, 10, 60_000)) {
-    return tooManyRequests("Demasiados finalize calls. Esperá 1 minuto.");
+  if (!rateLimit(`challenge:${ip}`, 5, 60_000)) {
+    return tooManyRequests("Máximo 5 retos por minuto. Esperá.");
   }
 
-  let body: FinalizeBody;
+  let body: ChallengeBody;
   try {
-    body = (await request.json()) as FinalizeBody;
+    body = (await request.json()) as ChallengeBody;
   } catch {
     return badRequest("Invalid JSON");
   }
 
-  const sessionId = body.sessionId;
-  if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
-    return badRequest("'sessionId' inválido");
-  }
-  // snapshots opcional ahora — finalize captura uno fresco si no le mandan
   if (
-    body.snapshots !== undefined &&
-    (!Array.isArray(body.snapshots) || body.snapshots.length > 100)
+    !body.url ||
+    typeof body.url !== "string" ||
+    body.url.length > 500 ||
+    !URL_PATTERN.test(body.url)
   ) {
-    return badRequest("'snapshots' debe ser array (max 100)");
+    return badRequest("'url' inválida (http/https, max 500 chars)");
   }
-  if (body.audioTranscript && body.audioTranscript.length > 8000) {
-    return badRequest("'audioTranscript' max 8000 chars");
-  }
-  if (body.name && body.name.length > 200) {
-    return badRequest("'name' max 200 chars");
-  }
-  if (!body.startUrl || typeof body.startUrl !== "string") {
-    return badRequest("'startUrl' es requerido");
+  if (body.hint && body.hint.length > 500) {
+    return badRequest("'hint' max 500 chars");
   }
 
   try {
-    // FUENTE DE VERDAD: fetch HTTP directo al startUrl.
-    // No usamos Browserbase para extraer datos — la sesión serverless es muy
-    // frágil. El iframe Browserbase queda solo para el wow visual del demo.
-    let allSnapshots: BrowserSnapshot[] = body.snapshots ?? [];
+    const totalT0 = Date.now();
 
-    try {
-      const directSnapshot = await fetchPageAsSnapshot(body.startUrl);
-      allSnapshots = [...allSnapshots, directSnapshot];
-    } catch (err) {
-      console.warn(
-        "[/api/browser/finalize] direct HTTP fetch failed:",
-        (err as Error).message,
-      );
-    }
+    const fetchT0 = Date.now();
+    const snapshot = await fetchPageAsSnapshot(body.url);
+    const fetchMs = Date.now() - fetchT0;
 
-    if (allSnapshots.length === 0) {
+    if (snapshot.observations.length === 0 && Object.keys(snapshot.field_values).length === 0) {
       return badRequest(
-        "No pude extraer información del sitio. Verificá que la URL sea válida y accesible.",
+        "No pude extraer estructura de esa URL. ¿Es accesible públicamente y devuelve HTML?",
       );
     }
 
-    const recording = buildRecording(allSnapshots, {
-      sessionId,
-      startUrl: body.startUrl,
-      audioTranscript: body.audioTranscript,
+    const recording = buildRecording([snapshot], {
+      sessionId: `challenge-${Date.now()}`,
+      startUrl: body.url,
+      audioTranscript: body.hint,
     });
 
     const extractResult = await extractPlaybookWithMetrics(recording);
     const playbook = extractResult.playbook;
-    if (body.name) playbook.name = body.name;
+    playbook.name = `Reto del jurado · ${snapshot.title || hostnameOf(body.url)}`;
 
-    // Track costs (transparencia diferenciadora)
     const cost: CostBreakdown = {
       capa1_claude_usd: claudeCost(
         extractResult.model,
         extractResult.input_tokens,
         extractResult.output_tokens,
       ),
-      capa1_browserbase_usd: 0, // sin sesión BB
+      capa1_browserbase_usd: 0,
       capa2_elevenlabs_usd: 0,
       capa2_whisper_usd: 0,
       capa3_gemini_usd: 0,
@@ -138,9 +118,9 @@ export async function POST(request: NextRequest) {
     };
 
     const latency: LatencyBreakdown = {
-      total_ms: extractResult.latency_ms,
+      total_ms: 0,
       claude_ms: extractResult.latency_ms,
-      browserbase_ms: 0,
+      browserbase_ms: fetchMs,
       solana_ms: 0,
       other_ms: 0,
     };
@@ -152,8 +132,6 @@ export async function POST(request: NextRequest) {
       provenance = await solana.registerPlaybook(playbook);
       playbook.provenance = provenance;
 
-      // Per-mapping signing: firma cada mapping de alta confianza por separado.
-      // Mappings <70% NO se firman → marcadores claros para revisión humana.
       if (playbook.mappings && playbook.mappings.length > 0) {
         try {
           playbook.mappings = await solana.signMappings(playbook.mappings, {
@@ -161,7 +139,7 @@ export async function POST(request: NextRequest) {
           });
         } catch (err) {
           console.warn(
-            "[/api/browser/finalize] per-mapping signing skipped:",
+            "[/api/challenge] per-mapping signing skipped:",
             (err as Error).message,
           );
         }
@@ -173,20 +151,17 @@ export async function POST(request: NextRequest) {
       latency.solana_ms = Date.now() - solanaT0;
     } catch (err) {
       console.warn(
-        "[/api/browser/finalize] Solana skipped:",
+        "[/api/challenge] Solana skipped:",
         (err as Error).message,
       );
     }
 
-    // Total y persistir en el playbook
     cost.total_usd =
       cost.capa1_claude_usd +
       cost.capa1_browserbase_usd +
-      cost.capa2_elevenlabs_usd +
-      cost.capa2_whisper_usd +
       cost.capa3_gemini_usd +
       cost.capa6_solana_usd;
-    latency.total_ms = latency.claude_ms + latency.solana_ms + latency.other_ms;
+    latency.total_ms = Date.now() - totalT0;
 
     playbook.cost_breakdown = cost;
     playbook.latency_breakdown = latency;
@@ -196,7 +171,7 @@ export async function POST(request: NextRequest) {
       if (critique) playbook.self_critique = critique;
     } catch (err) {
       console.warn(
-        "[/api/browser/finalize] critique skipped:",
+        "[/api/challenge] critique skipped:",
         (err as Error).message,
       );
     }
@@ -205,7 +180,7 @@ export async function POST(request: NextRequest) {
       await saveSavedPlaybook(playbook);
     } catch (err) {
       console.warn(
-        "[/api/browser/finalize] Store save skipped:",
+        "[/api/challenge] Store save skipped:",
         (err as Error).message,
       );
     }
@@ -213,28 +188,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       playbook,
       provenance,
-      snapshotsCount: allSnapshots.length,
+      snapshotsCount: 1,
+      fetchMs,
+      title: snapshot.title,
     });
   } catch (err) {
-    console.error("[/api/browser/finalize]", err);
-    return NextResponse.json(sanitizedError(err, "Finalize failed"), {
+    console.error("[/api/challenge]", err);
+    return NextResponse.json(sanitizedError(err, "Challenge failed"), {
       status: 500,
     });
-  } finally {
-    void closeSession(sessionId);
   }
 }
 
-/**
- * Hace fetch HTTP directo al startUrl y parsea el HTML para extraer:
- *   - Título de la página
- *   - Labels visibles (lo que ve el usuario como nombre de campo)
- *   - Headings + table headers
- *   - Input names + placeholders (lo que Themis necesita para mapear)
- *
- * Convierte todo a un BrowserSnapshot que el extractor puede usar.
- * Es server-side regex parsing — barato, sin DOM real ni Playwright.
- */
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url.slice(0, 40);
+  }
+}
+
 async function fetchPageAsSnapshot(url: string): Promise<BrowserSnapshot> {
   const res = await fetch(url, {
     headers: {
@@ -243,13 +216,13 @@ async function fetchPageAsSnapshot(url: string): Promise<BrowserSnapshot> {
       Accept: "text/html",
     },
     redirect: "follow",
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} fetching ${url}`);
   }
   const html = await res.text();
 
-  // Extracción mínima — regex sobre HTML, suficiente para Claude
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const title = titleMatch?.[1]?.trim().slice(0, 200) ?? "";
 
@@ -264,50 +237,32 @@ async function fetchPageAsSnapshot(url: string): Promise<BrowserSnapshot> {
     }
   };
 
-  // Labels visibles
-  const labelMatches = html.matchAll(/<label[^>]*>([^<]+)<\/label>/gi);
-  for (const m of labelMatches) {
+  for (const m of html.matchAll(/<label[^>]*>([^<]+)<\/label>/gi)) {
     pushUnique(m[1] ?? "");
     if (observations.length >= 30) break;
   }
-
-  // Headings + table headers
-  const headingMatches = html.matchAll(
-    /<(h[1-3]|th)[^>]*>([^<]+)<\/\1>/gi,
-  );
-  for (const m of headingMatches) {
+  for (const m of html.matchAll(/<(h[1-3]|th)[^>]*>([^<]+)<\/\1>/gi)) {
     pushUnique(m[2] ?? "");
     if (observations.length >= 50) break;
   }
-
-  // Button text (acciones disponibles)
-  const buttonMatches = html.matchAll(/<button[^>]*>([^<]+)<\/button>/gi);
-  for (const m of buttonMatches) {
+  for (const m of html.matchAll(/<button[^>]*>([^<]+)<\/button>/gi)) {
     pushUnique(m[1] ?? "");
     if (observations.length >= 60) break;
   }
 
-  // Field values: extraemos name + placeholder de inputs
   const field_values: Record<string, string> = {};
-  const inputMatches = html.matchAll(
-    /<input[^>]*\bname=["']([^"']+)["'][^>]*>/gi,
-  );
-  for (const m of inputMatches) {
+  for (const m of html.matchAll(/<input[^>]*\bname=["']([^"']+)["'][^>]*>/gi)) {
     const name = m[1] ?? "";
     const placeholderMatch = m[0].match(/placeholder=["']([^"']+)["']/i);
     const valueMatch = m[0].match(/value=["']([^"']+)["']/i);
     if (name) {
-      field_values[name] =
-        placeholderMatch?.[1] ?? valueMatch?.[1] ?? "";
+      field_values[name] = placeholderMatch?.[1] ?? valueMatch?.[1] ?? "";
     }
     if (Object.keys(field_values).length >= 30) break;
   }
-
-  // Select options (más contexto de qué campos hay)
-  const selectMatches = html.matchAll(
+  for (const m of html.matchAll(
     /<select[^>]*\bname=["']([^"']+)["'][^>]*>/gi,
-  );
-  for (const m of selectMatches) {
+  )) {
     const name = m[1];
     if (name && !field_values[name]) field_values[name] = "(select)";
   }
@@ -334,22 +289,14 @@ function buildRecording(
     ? new Date(snapshots[0].taken_at).getTime()
     : Date.now();
 
-  let lastUrl = "";
   for (const snap of snapshots) {
     const ts = new Date(snap.taken_at).getTime() - t0;
 
-    if (snap.url !== lastUrl) {
-      events.push({
-        timestamp_ms: ts,
-        type: "dom_event",
-        data: {
-          kind: "navigation",
-          url: snap.url,
-          title: snap.title,
-        },
-      });
-      lastUrl = snap.url;
-    }
+    events.push({
+      timestamp_ms: ts,
+      type: "dom_event",
+      data: { kind: "navigation", url: snap.url, title: snap.title },
+    });
 
     if (snap.observations.length > 0) {
       events.push({
@@ -389,8 +336,6 @@ function buildRecording(
     events,
     audio_transcript: meta.audioTranscript,
     source_url: meta.startUrl,
-    destination_url:
-      lastSnap && lastSnap.url !== meta.startUrl ? lastSnap.url : undefined,
     duration_ms: tEnd - t0,
     created_at: new Date(t0).toISOString(),
   };

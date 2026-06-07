@@ -10,6 +10,7 @@
     "./teach": "./src/teach/recorder.ts",
     "./playbook": "./src/playbook/extractor.ts",
     "./playbook/live": "./src/playbook/live-mapping-inference.ts",
+    "./playbook/critique": "./src/playbook/self-critique.ts",
     "./cognitive": "./src/cognitive/gemini-recommendations.ts",
     "./blockchain": "./src/blockchain/solana-client.ts",
     "./browser": "./src/browser/session-manager.ts",

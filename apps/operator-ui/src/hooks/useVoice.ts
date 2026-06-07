@@ -20,8 +20,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+export type VoiceMood =
+  | "curious"
+  | "firm"
+  | "triumphant"
+  | "alert"
+  | "neutral";
+
 interface UseVoiceReturn {
-  speak: (text: string) => Promise<void>;
+  speak: (text: string, mood?: VoiceMood) => Promise<void>;
   stop: () => void;
   unlock: () => Promise<void>;
   isPlaying: boolean;
@@ -69,16 +76,18 @@ export function useVoice(): UseVoiceReturn {
   }, [unlocked]);
 
   const speak = useCallback(
-    async (text: string) => {
+    async (text: string, mood: VoiceMood = "neutral") => {
       setError(null);
       stop();
-      console.log(`[useVoice] Pidiendo voz: "${text.slice(0, 50)}..."`);
+      console.log(
+        `[useVoice] Pidiendo voz (${mood}): "${text.slice(0, 50)}..."`,
+      );
 
       try {
         const res = await fetch("/api/voice", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, mood }),
         });
         if (!res.ok) {
           const errText = await res.text();

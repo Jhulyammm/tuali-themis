@@ -68,6 +68,18 @@ export interface PartialMapping {
   transformation?: string;
 }
 
+export interface InferenceMetrics {
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+  latency_ms: number;
+}
+
+let lastMetrics: InferenceMetrics | null = null;
+export function getLastInferenceMetrics(): InferenceMetrics | null {
+  return lastMetrics;
+}
+
 export async function inferPartialMappings(
   snapshots: SnapshotInput[],
 ): Promise<PartialMapping[]> {
@@ -90,15 +102,23 @@ ${JSON.stringify(compact, null, 2)}
   // Retry con exponential backoff — si Anthropic 429s, esperamos y reintentamos
   // hasta 3 veces. Crítico para demo en vivo: si truena el primer call, igual
   // hay chance de recuperarse sin romper la UX.
+  const model = process.env.LIVE_INFERENCE_MODEL ?? "claude-haiku-4-5";
+  const t0 = Date.now();
   const response = await retryWithBackoff(async () =>
     client.messages.create({
-      model: process.env.LIVE_INFERENCE_MODEL ?? "claude-haiku-4-5",
+      model,
       max_tokens: 400,
       temperature: 0.2,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     }),
   );
+  lastMetrics = {
+    input_tokens: response.usage?.input_tokens ?? 0,
+    output_tokens: response.usage?.output_tokens ?? 0,
+    model,
+    latency_ms: Date.now() - t0,
+  };
 
   const text =
     response.content[0]?.type === "text" ? response.content[0].text : "";

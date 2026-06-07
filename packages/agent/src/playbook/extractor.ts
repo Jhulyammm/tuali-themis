@@ -157,21 +157,43 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+export interface ExtractResult {
+  playbook: Playbook;
+  /** Tokens reportados por Claude — para calcular costo */
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+  latency_ms: number;
+}
+
 export async function extractPlaybookFromRecording(
   recording: Recording,
 ): Promise<Playbook> {
+  const result = await extractPlaybookWithMetrics(recording);
+  return result.playbook;
+}
+
+export async function extractPlaybookWithMetrics(
+  recording: Recording,
+): Promise<ExtractResult> {
   const userPrompt = buildUserPrompt(recording);
+  const model = process.env.EXTRACTOR_MODEL ?? "claude-haiku-4-5";
+  const t0 = Date.now();
 
   // Retry con backoff por si Anthropic 429s — crítico al final de observación.
   const response = await retryWithBackoff(async () =>
     client.messages.create({
-      model: process.env.EXTRACTOR_MODEL ?? "claude-haiku-4-5",
+      model,
       max_tokens: 4096,
       temperature: 0.1,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     }),
   );
+
+  const latency_ms = Date.now() - t0;
+  const input_tokens = response.usage?.input_tokens ?? 0;
+  const output_tokens = response.usage?.output_tokens ?? 0;
 
   const text = response.content[0]?.type === "text" ? response.content[0].text : "";
   const json = safeParseJson(text);
@@ -192,7 +214,7 @@ export async function extractPlaybookFromRecording(
     created_at: new Date().toISOString(),
   };
 
-  return playbook;
+  return { playbook, input_tokens, output_tokens, model, latency_ms };
 }
 
 // ============================================================

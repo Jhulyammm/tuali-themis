@@ -59,3 +59,18 @@ export {
   pruneOld,
 } from "./executions-stream";
 export type { RunningExecution } from "./executions-stream";
+
+// Cost tracker (Capa de transparencia) — costos USD reales por capa
+export {
+  claudeCost,
+  geminiCost,
+  elevenLabsCost,
+  whisperCost,
+  browserbaseCost,
+  solanaCost,
+  humanCost,
+  calculateROI,
+  emptyBreakdown,
+  sumBreakdown,
+} from "./cost-tracker";
+export type { CostBreakdown, LatencyBreakdown } from "./cost-tracker";
