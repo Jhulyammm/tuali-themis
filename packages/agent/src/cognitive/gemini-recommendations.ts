@@ -141,7 +141,9 @@ async function callGemini(
   client: GoogleGenerativeAI,
   userPrompt: string,
 ): Promise<z.infer<typeof RecommendationsResponseSchema>> {
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  // gemini-2.0-flash da 404 con v1beta — gemini-2.0-flash-lite o
+  // gemini-1.5-flash sí existen. Default seguro: 2.0-flash-lite (es free tier).
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
   const model = client.getGenerativeModel({
     model: modelName,
     systemInstruction: SYSTEM_PROMPT,

@@ -97,11 +97,17 @@ async function checkBrowserbase(): Promise<Check> {
 async function checkElevenLabs(): Promise<Check> {
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) return { name: "elevenlabs", status: "down", latency_ms: 0, error: "missing key" };
+  // /v1/voices lista voces — funciona con cualquier key válida y no consume créditos.
+  // Algunas keys gratis NO tienen acceso a /v1/user.
   const { result, ms, err } = await timed(async () => {
-    const res = await fetch("https://api.elevenlabs.io/v1/user", {
+    const res = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: { "xi-api-key": key },
     });
-    return res.ok;
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 80)}`);
+    }
+    return true;
   });
   return {
     name: "elevenlabs",
@@ -131,11 +137,17 @@ async function checkWhisper(): Promise<Check> {
 async function checkGemini(): Promise<Check> {
   const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
   if (!key) return { name: "gemini", status: "down", latency_ms: 0, error: "missing key" };
+  // El endpoint /v1beta/models lista modelos disponibles — no consume cuota.
+  // No le pasamos modelo específico para evitar 404 si nombre cambia.
   const { result, ms, err } = await timed(async () => {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
     );
-    return res.ok;
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 80)}`);
+    }
+    return true;
   });
   return {
     name: "gemini",

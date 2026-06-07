@@ -69,49 +69,74 @@ function buildStagehand(existingSessionId?: string): Stagehand {
 export async function createSession(
   opts: CreateSessionOpts,
 ): Promise<SessionHandle> {
-  const stagehand = buildStagehand();
+  // CRÍTICO: creamos la sesión Browserbase directamente vía REST con
+  // keepAlive=true. Si la creamos vía Stagehand sin keepAlive, cuando
+  // stagehand.close() corre la sesión también se cierra y los subsequent
+  // observe/finalize fallan con "session no longer alive".
+  const apiKey = process.env.BROWSERBASE_API_KEY;
+  const projectId = process.env.BROWSERBASE_PROJECT_ID;
+  if (!apiKey || !projectId) {
+    throw new Error("Missing BROWSERBASE_API_KEY o BROWSERBASE_PROJECT_ID");
+  }
 
-  try {
-    const init = await stagehand.init();
-    const sessionId = stagehand.browserbaseSessionID ?? init.sessionId;
-    if (!sessionId) {
-      throw new Error("Stagehand init did not return a sessionId");
-    }
+  const createRes = await fetch("https://api.browserbase.com/v1/sessions", {
+    method: "POST",
+    headers: {
+      "x-bb-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      projectId,
+      keepAlive: true,
+      // Timeout default es 5 min — sobra para teach/execute
+    }),
+  });
+  if (!createRes.ok) {
+    const text = await createRes.text();
+    throw new Error(
+      `Browserbase create ${createRes.status}: ${text.slice(0, 200)}`,
+    );
+  }
+  const sessionData = (await createRes.json()) as {
+    id: string;
+    connectUrl?: string;
+  };
+  const sessionId = sessionData.id;
+  const debuggerUrl = await resolveDebuggerUrl(sessionId);
 
-    const debuggerUrl = await resolveDebuggerUrl(sessionId, init.debugUrl);
-
-    if (opts.startUrl) {
+  // Si hay startUrl, instanciamos Stagehand attachado para navegar inicial,
+  // después cerramos local. La sesión queda viva por keepAlive=true.
+  if (opts.startUrl) {
+    const stagehand = buildStagehand(sessionId);
+    try {
+      await stagehand.init();
+      await stagehand.page.goto(opts.startUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
+    } catch (err) {
+      console.warn(
+        "[session-manager] initial goto failed:",
+        (err as Error).message,
+      );
+    } finally {
       try {
-        await stagehand.page.goto(opts.startUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 15000,
-        });
-      } catch (err) {
-        console.warn(
-          "[session-manager] initial goto failed:",
-          (err as Error).message,
-        );
+        await stagehand.close();
+      } catch {
+        /* ignore */
       }
     }
-
-    console.log(`[session-manager] created sessionId=${sessionId}`);
-
-    return {
-      sessionId,
-      debuggerUrl,
-      startUrl: opts.startUrl,
-      createdAt: new Date().toISOString(),
-      snapshots: [],
-    };
-  } finally {
-    // Cerramos la instancia local de Stagehand — la sesión BROWSERBASE
-    // queda viva en la nube de Browserbase y podemos re-attacharnos a ella.
-    try {
-      await stagehand.close();
-    } catch {
-      /* ignore close errors */
-    }
   }
+
+  console.log(`[session-manager] created sessionId=${sessionId} (keepAlive)`);
+
+  return {
+    sessionId,
+    debuggerUrl,
+    startUrl: opts.startUrl,
+    createdAt: new Date().toISOString(),
+    snapshots: [],
+  };
 }
 
 /**
@@ -247,9 +272,13 @@ async function isSessionAlive(sessionId: string): Promise<boolean> {
     );
     if (!res.ok) return false;
     const json = (await res.json()) as { status?: string };
-    return json.status === "RUNNING";
+    // RUNNING o PENDING ambos están "vivos" — la sesión se puede usar.
+    // COMPLETED / TIMED_OUT / ERROR = muerta.
+    return json.status === "RUNNING" || json.status === "PENDING";
   } catch {
-    return false;
+    // Si el check mismo falla (network blip), asumimos viva — el attach
+    // siguiente fallará si realmente está muerta.
+    return true;
   }
 }
 
