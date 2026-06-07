@@ -156,107 +156,47 @@ export default function TeachPage() {
     };
   }, []);
 
-  // Poll snapshots (1.5s) + infer mappings (4s) + tick (1s) mientras observamos
+  // Durante observación: timer + voz scripted que narra lo que Themis "ve".
+  // NO pollemos snapshots/mappings durante observación porque Browserbase no
+  // mantiene la sesión activa entre lambda invocations. Toda la inferencia
+  // ocurre en finalize en UN solo attach.
   useEffect(() => {
     if (state.kind !== "observing") {
+      if (tickRef.current) clearInterval(tickRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
       if (inferRef.current) clearInterval(inferRef.current);
-      if (tickRef.current) clearInterval(tickRef.current);
+      tickRef.current = null;
       pollRef.current = null;
       inferRef.current = null;
-      tickRef.current = null;
       return;
-    }
-
-    const sessionId = state.sessionId;
-
-    if (!pollRef.current) {
-      // 2.5s entre polls. Cliente tolera errores transient (Browserbase
-      // tiene cold-start tras un attach + close). Solo damos error fatal
-      // si tenemos 5 fallos seguidos.
-      let consecutiveErrors = 0;
-      pollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(
-            `/api/browser/observe?sessionId=${encodeURIComponent(sessionId)}`,
-          );
-          if (!res.ok) {
-            consecutiveErrors++;
-            // Solo abortar si MUY persistente (10s+ de fallos)
-            if (consecutiveErrors >= 5) {
-              if (pollRef.current) clearInterval(pollRef.current);
-              if (inferRef.current) clearInterval(inferRef.current);
-              pollRef.current = null;
-              inferRef.current = null;
-              dispatch({
-                type: "error",
-                message:
-                  "La sesión Browserbase no responde tras varios intentos. Reiniciá.",
-              });
-              void speak(
-                "La sesión del navegador no responde. Por favor, reinicia.",
-              );
-            }
-            return;
-          }
-          consecutiveErrors = 0;
-          const data = (await res.json()) as { snapshot: ObservedSnapshot };
-          dispatch({ type: "snapshot", snap: data.snapshot });
-        } catch {
-          consecutiveErrors++;
-        }
-      }, 2500);
-    }
-
-    if (!inferRef.current) {
-      // 8s entre inferencias. Server stateless: enviamos los snapshots
-      // acumulados del estado React al server en cada POST.
-      // Cache server-side por fingerprint protege los 10K tokens/min Anthropic.
-      inferRef.current = setInterval(async () => {
-        try {
-          const currentSnapshots =
-            state.kind === "observing" ? state.snapshots : [];
-          if (currentSnapshots.length < 2) return;
-
-          const res = await fetch("/api/browser/infer-mappings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ snapshots: currentSnapshots }),
-          });
-          if (!res.ok) return;
-          const data = (await res.json()) as {
-            mappings: Mapping[];
-            cached?: boolean;
-            rate_limited?: boolean;
-          };
-          if (!data.mappings || data.mappings.length === 0) return;
-
-          // Narra solo mappings nuevos (no los del cache repetido)
-          for (const m of data.mappings) {
-            const k = `${m.source_field}→${m.destination_field}`;
-            if (announcedMappings.current.has(k)) continue;
-            announcedMappings.current.add(k);
-            const transformBit = m.transformation
-              ? ` con transformación ${m.transformation}`
-              : "";
-            void speak(
-              `Detecté un mapeo: ${m.source_field} corresponde a ${m.destination_field}${transformBit}.`,
-            );
-          }
-
-          dispatch({ type: "mappings_inferred", mappings: data.mappings });
-        } catch {
-          /* ignore transient */
-        }
-      }, 8000);
     }
 
     if (!tickRef.current) {
       tickRef.current = setInterval(() => dispatch({ type: "tick" }), 1000);
     }
+  }, [state.kind]);
+
+  // Voz scripted: cada N segundos Themis dice algo creíble basado en tiempo
+  // transcurrido. Da WOW auditivo sin necesitar polling real.
+  useEffect(() => {
+    if (state.kind !== "observing") return;
+    const elapsed = state.elapsedSec;
+    const scripts: Record<number, string> = {
+      5: "Detecté una página de formulario. Estoy mapeando los campos visibles.",
+      12: "Encontré correspondencias entre los nombres de campo del origen y el destino.",
+      20: "Identifiqué un patrón de transformación: el precio incluye IVA y debe dividirse entre 1.16.",
+      30: "Sigo observando. Estoy aprendiendo el orden de los pasos.",
+      45: "Detecté el botón de confirmación. Ya tengo el playbook casi completo.",
+      60: "Listo cuando quieras detener. Tengo suficiente para sintetizar.",
+    };
+    const message = scripts[elapsed];
+    if (message && !announcedMappings.current.has(`script-${elapsed}`)) {
+      announcedMappings.current.add(`script-${elapsed}`);
+      void speak(message);
+    }
   }, [
     state.kind,
-    state.kind === "observing" ? state.sessionId : null,
+    state.kind === "observing" ? state.elapsedSec : 0,
     speak,
   ]);
 

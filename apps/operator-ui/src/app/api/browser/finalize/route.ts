@@ -20,6 +20,7 @@ import { extractPlaybookFromRecording } from "@hack4her/agent/playbook";
 import { createSolanaClientFromEnv } from "@hack4her/agent/blockchain";
 import {
   closeSession,
+  snapshot as captureSnapshot,
   type BrowserSnapshot,
 } from "@hack4her/agent/browser";
 import { saveSavedPlaybook } from "@hack4her/db";
@@ -63,11 +64,12 @@ export async function POST(request: NextRequest) {
   if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
     return badRequest("'sessionId' inválido");
   }
-  if (!Array.isArray(body.snapshots) || body.snapshots.length === 0) {
-    return badRequest("'snapshots' debe ser un array no vacío");
-  }
-  if (body.snapshots.length > 100) {
-    return badRequest("Demasiados snapshots (max 100)");
+  // snapshots opcional ahora — finalize captura uno fresco si no le mandan
+  if (
+    body.snapshots !== undefined &&
+    (!Array.isArray(body.snapshots) || body.snapshots.length > 100)
+  ) {
+    return badRequest("'snapshots' debe ser array (max 100)");
   }
   if (body.audioTranscript && body.audioTranscript.length > 8000) {
     return badRequest("'audioTranscript' max 8000 chars");
@@ -80,7 +82,26 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const recording = buildRecording(body.snapshots, {
+    // Capturamos UN snapshot fresco de la página final con un attach único.
+    // Si falla (la sesión murió), seguimos con los snapshots del cliente.
+    let allSnapshots: BrowserSnapshot[] = body.snapshots ?? [];
+    try {
+      const freshSnapshot = await captureSnapshot(sessionId);
+      allSnapshots = [...allSnapshots, freshSnapshot];
+    } catch (err) {
+      console.warn(
+        "[/api/browser/finalize] fresh snapshot failed, using client-side only:",
+        (err as Error).message,
+      );
+    }
+
+    if (allSnapshots.length === 0) {
+      return badRequest(
+        "No hay snapshots para inferir playbook (sesión sin datos)",
+      );
+    }
+
+    const recording = buildRecording(allSnapshots, {
       sessionId,
       startUrl: body.startUrl,
       audioTranscript: body.audioTranscript,
@@ -113,7 +134,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       playbook,
       provenance,
-      snapshotsCount: body.snapshots.length,
+      snapshotsCount: allSnapshots.length,
     });
   } catch (err) {
     console.error("[/api/browser/finalize]", err);
