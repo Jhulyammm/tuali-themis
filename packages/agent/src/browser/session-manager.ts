@@ -81,6 +81,10 @@ export async function createSession(
     // observe() son llamadas frecuentes (~1.5s) — mejor un modelo rápido y barato.
     modelName: process.env.STAGEHAND_MODEL ?? "claude-haiku-4-5",
     modelClientOptions: { apiKey: process.env.ANTHROPIC_API_KEY },
+    // disablePino: en Vercel serverless, pino-pretty no está disponible y
+    // Stagehand crashea con "unable to determine transport target". Lo
+    // deshabilitamos entero — los logs igual van a Vercel runtime logs.
+    disablePino: true,
   });
 
   const init = await stagehand.init();
