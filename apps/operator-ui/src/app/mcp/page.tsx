@@ -20,6 +20,9 @@ import {
   Sparkles,
   ExternalLink,
   Server,
+  Play,
+  Loader2,
+  Zap,
 } from "lucide-react";
 
 interface ToolInfo {
@@ -151,6 +154,9 @@ export default function McpPage() {
         </CardContent>
       </Card>
 
+      {/* Tester en vivo — la prueba de que MCP funciona */}
+      <LiveTester origin={origin} />
+
       {/* Endpoint */}
       <Card className="border-coral/30">
         <CardContent className="p-5 space-y-3">
@@ -281,5 +287,239 @@ export default function McpPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ============================================================
+// LiveTester — invoca tools MCP en tiempo real desde el navegador
+// ============================================================
+
+interface ToolPreset {
+  label: string;
+  description: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  approxMs: number;
+}
+
+const TOOL_PRESETS: ToolPreset[] = [
+  {
+    label: "Listar clientes Tuali",
+    description: "Devuelve los 4 clientes activos (OXXO, Soriana, Costco, Don Beto) con stats reales.",
+    toolName: "themis.list_clients",
+    args: {},
+    approxMs: 600,
+  },
+  {
+    label: "Listar playbooks aprendidos",
+    description: "Todos los playbooks en MongoDB con sus mappings y firmas Solana.",
+    toolName: "themis.list_playbooks",
+    args: {},
+    approxMs: 800,
+  },
+  {
+    label: "Playbooks de OXXO Tec",
+    description: "Filtra por cliente. Demuestra que Themis es multi-tenant.",
+    toolName: "themis.list_playbooks",
+    args: { client_id: "oxxo-tec-mty" },
+    approxMs: 800,
+  },
+  {
+    label: "Onboardear 7-Eleven México",
+    description: "Themis fetchea el sitio, infiere marca y crea cliente. ~5 segundos.",
+    toolName: "themis.onboard_client",
+    args: { url: "https://www.7-eleven.com.mx" },
+    approxMs: 5500,
+  },
+  {
+    label: "Recomendaciones para OXXO Tec",
+    description: "Gemini Deep Research con grounding. Eventos reales. ~10 segundos.",
+    toolName: "themis.get_recommendations",
+    args: { client_id: "oxxo-tec-mty" },
+    approxMs: 11000,
+  },
+];
+
+function LiveTester({ origin }: { origin: string }) {
+  const [activePreset, setActivePreset] = useState<ToolPreset>(TOOL_PRESETS[0]);
+  const [request, setRequest] = useState<string>("");
+  const [response, setResponse] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+
+  const buildRpcPayload = (preset: ToolPreset) => ({
+    jsonrpc: "2.0",
+    id: Date.now(),
+    method: "tools/call",
+    params: { name: preset.toolName, arguments: preset.args },
+  });
+
+  const invoke = async (preset: ToolPreset) => {
+    setActivePreset(preset);
+    setError(null);
+    setResponse("");
+    setLatencyMs(null);
+    const payload = buildRpcPayload(preset);
+    setRequest(JSON.stringify(payload, null, 2));
+    setLoading(true);
+    const t0 = Date.now();
+    try {
+      const res = await fetch(`${origin}/api/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setLatencyMs(Date.now() - t0);
+      // El resultado del tool viene dentro de result.content[0].text (formato MCP).
+      // Si es JSON adentro, lo pretty-printeamos para que se lea mejor.
+      let pretty = JSON.stringify(data, null, 2);
+      if (
+        data?.result?.content &&
+        Array.isArray(data.result.content) &&
+        data.result.content[0]?.text
+      ) {
+        try {
+          const inner = JSON.parse(data.result.content[0].text);
+          pretty = JSON.stringify(
+            { ...data, result: { ...data.result, parsed: inner } },
+            null,
+            2,
+          );
+        } catch {
+          // ignore — el text no era JSON parseable
+        }
+      }
+      setResponse(pretty);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="border-coral/40 bg-gradient-to-br from-coral/5 via-white to-white">
+      <CardContent className="p-5 space-y-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-coral" />
+            <p className="font-semibold text-text-primary">
+              Probar MCP en vivo
+            </p>
+            <Badge className="bg-coral/10 text-coral border-coral/20 text-[10px]">
+              JSON-RPC real al endpoint público
+            </Badge>
+          </div>
+          {latencyMs !== null && (
+            <span className="text-[11px] font-mono text-text-tertiary">
+              respondió en{" "}
+              <span className="text-coral font-semibold">{latencyMs}ms</span>
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-text-secondary">
+          Cualquier asistente IA con MCP puede invocar estas tools. Acá las
+          invocamos directo desde el navegador (cliente JS → POST JSON-RPC →
+          servidor Themis) para que veas que el endpoint público está vivo y
+          devuelve datos reales — no slideware.
+        </p>
+
+        {/* Presets */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {TOOL_PRESETS.map((preset) => {
+            const isActive = preset.label === activePreset.label;
+            return (
+              <button
+                key={preset.label}
+                onClick={() => void invoke(preset)}
+                disabled={loading}
+                className={`text-left p-3 rounded-lg border transition-all ${
+                  isActive
+                    ? "border-coral bg-coral/5"
+                    : "border-border bg-white hover:border-coral/40 hover:bg-coral/5"
+                } disabled:opacity-50`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-sm font-semibold text-text-primary">
+                    {preset.label}
+                  </p>
+                  {isActive && loading ? (
+                    <Loader2 className="w-3.5 h-3.5 text-coral animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 text-text-tertiary" />
+                  )}
+                </div>
+                <p className="text-[11px] text-text-secondary leading-snug">
+                  {preset.description}
+                </p>
+                <p className="text-[10px] font-mono text-coral mt-1">
+                  {preset.toolName}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Request / Response side-by-side */}
+        {(request || response) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-3 border-t border-border">
+            {/* Request */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary">
+                  Request · JSON-RPC 2.0
+                </p>
+                <span className="text-[10px] font-mono text-text-tertiary">
+                  POST /api/mcp
+                </span>
+              </div>
+              <pre className="bg-bg-elevated border border-border rounded-lg p-3 text-[11px] font-mono text-text-primary overflow-x-auto max-h-72 leading-relaxed">
+                {request}
+              </pre>
+            </div>
+
+            {/* Response */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary">
+                  Response
+                </p>
+                {loading && (
+                  <span className="text-[10px] font-mono text-coral flex items-center gap-1">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    Themis está procesando...
+                  </span>
+                )}
+                {!loading && latencyMs !== null && (
+                  <span className="text-[10px] font-mono text-status-success">
+                    ✓ 200 OK · {latencyMs}ms
+                  </span>
+                )}
+              </div>
+              <pre className="bg-bg-elevated border border-border rounded-lg p-3 text-[11px] font-mono text-text-primary overflow-x-auto max-h-72 leading-relaxed">
+                {error ? `// error: ${error}` : response || "// Esperando invocación..."}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        {/* curl equivalente */}
+        {request && (
+          <details className="border-t border-border pt-3">
+            <summary className="cursor-pointer text-[11px] font-mono text-text-tertiary hover:text-coral">
+              Ver equivalente curl (terminal)
+            </summary>
+            <pre className="bg-bg-elevated border border-border rounded-lg p-3 text-[11px] font-mono text-text-primary overflow-x-auto mt-2 leading-relaxed">
+              {`curl -X POST ${origin}/api/mcp \\
+  -H "Content-Type: application/json" \\
+  -d '${request.replace(/\n/g, "").replace(/\s+/g, " ")}'`}
+            </pre>
+          </details>
+        )}
+      </CardContent>
+    </Card>
   );
 }
