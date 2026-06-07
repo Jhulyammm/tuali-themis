@@ -164,14 +164,15 @@ export default function RacePage() {
       <header className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs font-mono uppercase tracking-widest text-coral mb-1">
-            Capa 1 · prueba de velocidad
+            Capa 1 · prueba de velocidad en captura de SKU
           </p>
           <h1 className="text-3xl font-bold text-text-primary">
-            La carrera. <span className="text-coral">Tú vs Themis.</span>
+            Captura de anaquel. <span className="text-coral">Tú vs Themis.</span>
           </h1>
           <p className="text-sm text-text-secondary mt-2 max-w-2xl">
-            10 SKUs para capturar. Tú haces clic por cada uno. Themis lo hace
-            sola. Al final ves el speedup real, no proyectado.
+            10 SKUs Coca-Cola para registrar en el ERP de Tuali. Tú haces clic
+            por cada uno. Themis lo hace sola. Al final ves el speedup real
+            multiplicado por las miles de tienditas que atiende Arca cada día.
           </p>
         </div>
         {state.kind === "idle" && (
@@ -195,7 +196,7 @@ export default function RacePage() {
       {/* Race tracks */}
       <div className="grid md:grid-cols-2 gap-6">
         <Track
-          label="Tú"
+          label="Capturista humano"
           icon={<User className="w-5 h-5" />}
           progress={humanProgress}
           done={humanDone}
@@ -405,8 +406,8 @@ function FinishCard({
         </div>
 
         <p className="text-xs text-text-secondary mt-4 italic">
-          Themis trabaja 24/7 sin cansarse. Esto es por SKU, multiplicado por
-          miles de tiendas Tuali al día.
+          Themis trabaja 24/7 sin cansarse. Esto es por SKU. Arca atiende más
+          de 1.4 millones de puntos de venta — multiplica y mide el ahorro.
         </p>
       </CardContent>
     </Card>

@@ -48,9 +48,9 @@ type State =
   | { kind: "error"; message: string };
 
 const SUGGESTION_URLS = [
-  "https://news.ycombinator.com",
-  "https://github.com/login",
-  "https://stackoverflow.com/users/login",
+  "https://www.arcacontal.com",
+  "https://www.coca-colacompany.com/brands",
+  "https://es.wikipedia.org/wiki/Coca-Cola",
 ];
 
 export default function ChallengePage() {
@@ -144,13 +144,13 @@ export default function ChallengePage() {
               </span>
             </div>
             <h1 className="text-3xl font-bold text-text-primary leading-tight">
-              Dame cualquier URL.
+              Dame cualquier URL de proveedor.
               <span className="text-coral"> Te devuelvo el playbook.</span>
             </h1>
             <p className="text-sm text-text-secondary mt-2 max-w-2xl">
-              Sin plantillas. Sin operador humano. Themis nunca vio esta URL.
-              Fetch HTTP → Claude infiere mapeos → Solana firma. Todo en
-              segundos, transparente, con el costo real en pantalla.
+              Sin plantillas. Sin que un capturista lo enseñe. Themis nunca vio
+              esta URL. Fetch HTTP → Claude infiere los mapeos hacia el ERP de
+              Tuali → Solana firma. Segundos, no semanas de integración.
             </p>
           </div>
         </div>

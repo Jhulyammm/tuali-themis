@@ -69,7 +69,7 @@ async function loadDatasets() {
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`recommend:${ip}`, 20, 60_000)) {
-    return tooManyRequests("Demasiadas recomendaciones. Esperá 1 minuto.");
+    return tooManyRequests("Demasiadas recomendaciones. Espera 1 minuto.");
   }
 
   let body: {

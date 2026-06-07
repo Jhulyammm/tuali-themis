@@ -52,7 +52,7 @@ interface ExecuteRequestBody {
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`execute:${ip}`, 5, 60_000)) {
-    return new Response("Demasiadas ejecuciones. Esperá 1 minuto.", {
+    return new Response("Demasiadas ejecuciones. Espera 1 minuto.", {
       status: 429,
     });
   }

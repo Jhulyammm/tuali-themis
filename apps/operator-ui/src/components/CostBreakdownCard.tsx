@@ -82,13 +82,13 @@ export function CostBreakdownCard({
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-widest text-text-tertiary font-mono">
-              Trabajador humano
+              Capturista manual
             </p>
             <p className="text-2xl font-bold tabular-nums text-text-secondary line-through decoration-2">
               ${manualCost.toFixed(2)}
             </p>
             <p className="text-[10px] text-text-tertiary">
-              en {manualMinutes} min
+              en {manualMinutes} min · captura tiendita
             </p>
           </div>
           <div>

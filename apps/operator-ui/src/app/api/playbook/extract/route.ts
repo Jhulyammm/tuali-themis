@@ -31,7 +31,7 @@ export const maxDuration = 120;
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`extract:${ip}`, 10, 60_000)) {
-    return tooManyRequests("Demasiadas extracciones. Esperá 1 minuto.");
+    return tooManyRequests("Demasiadas extracciones. Espera 1 minuto.");
   }
 
   let raw: string;

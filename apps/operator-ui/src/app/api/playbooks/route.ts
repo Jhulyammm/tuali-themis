@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`playbooks-get:${ip}`, 60, 60_000)) {
-    return tooManyRequests("Demasiados pedidos. Esperá un momento.");
+    return tooManyRequests("Demasiados pedidos. Espera un momento.");
   }
   try {
     const [playbooks, status] = await Promise.all([
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`playbooks-post:${ip}`, 10, 60_000)) {
-    return tooManyRequests("Demasiados saves. Esperá 1 minuto.");
+    return tooManyRequests("Demasiados saves. Espera 1 minuto.");
   }
 
   let raw: string;

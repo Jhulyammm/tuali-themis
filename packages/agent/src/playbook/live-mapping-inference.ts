@@ -33,7 +33,7 @@ destino. Ejemplos:
 Reglas:
 - Solo inferí mappings que tengan EVIDENCIA en los snapshots (no inventes)
 - Marca confidence honestamente (0.5 si poco evidente, 0.9+ si obvio)
-- Si todavía no tenés suficientes snapshots para detectar nada, devolvé []
+- Si todavía no tienes suficientes snapshots para detectar nada, devuelve []
 - transformation solo si el valor cambia (parsing, división, lookup, etc)
 - Sé incremental: cada llamada puede aportar más mappings sobre la previa
 

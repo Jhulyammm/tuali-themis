@@ -26,7 +26,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`whisper:${ip}`, 15, 60_000)) {
-    return tooManyRequests("Demasiadas transcripciones. Esperá 1 minuto.");
+    return tooManyRequests("Demasiadas transcripciones. Espera 1 minuto.");
   }
 
   let formData: FormData;

@@ -64,7 +64,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`converse:${ip}`, 20, 60_000)) {
-    return tooManyRequests("Demasiadas preguntas. Esperá unos segundos.");
+    return tooManyRequests("Demasiadas preguntas. Espera unos segundos.");
   }
 
   let body: ConverseBody;

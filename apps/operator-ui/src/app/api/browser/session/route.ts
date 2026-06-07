@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   // 3 sesiones por minuto por IP — más que suficiente para demo, frena spam.
   if (!rateLimit(`browser-session:${ip}`, 3, 60_000)) {
-    return tooManyRequests("Demasiadas sesiones. Esperá 1 minuto.");
+    return tooManyRequests("Demasiadas sesiones. Espera 1 minuto.");
   }
 
   let body: { startUrl?: string };

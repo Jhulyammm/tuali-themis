@@ -27,7 +27,7 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`observe:${ip}`, 120, 60_000)) {
-    return tooManyRequests("Demasiados polls. Esperá unos segundos.");
+    return tooManyRequests("Demasiados polls. Espera unos segundos.");
   }
 
   const sessionId = request.nextUrl.searchParams.get("sessionId");

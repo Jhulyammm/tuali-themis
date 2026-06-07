@@ -59,7 +59,7 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`finalize:${ip}`, 10, 60_000)) {
-    return tooManyRequests("Demasiados finalize calls. Esperá 1 minuto.");
+    return tooManyRequests("Demasiados finalize calls. Espera 1 minuto.");
   }
 
   let body: FinalizeBody;

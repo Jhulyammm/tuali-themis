@@ -247,12 +247,12 @@ export default function TeachPage() {
     if (state.kind !== "observing") return;
     const elapsed = state.elapsedSec;
     const scripts: Record<number, string> = {
-      5: "Detecté una página de formulario. Estoy mapeando los campos visibles.",
-      12: "Encontré correspondencias entre los nombres de campo del origen y el destino.",
-      20: "Identifiqué un patrón de transformación: el precio incluye IVA y debe dividirse entre 1.16.",
-      30: "Sigo observando. Estoy aprendiendo el orden de los pasos.",
-      45: "Detecté el botón de confirmación. Ya tengo el playbook casi completo.",
-      60: "Listo cuando quieras detener. Tengo suficiente para sintetizar.",
+      5: "Detecté el catálogo del proveedor. Estoy mapeando los campos hacia el ERP de Tuali.",
+      12: "Encontré correspondencias: el SKU del proveedor coincide con el código interno Tuali.",
+      20: "Identifiqué un patrón de transformación: el precio incluye IVA, lo divido entre 1.16 antes de cargarlo.",
+      30: "Sigo observando. Aprendo cómo navegas del catálogo al formulario de captura.",
+      45: "Detecté el botón de confirmar carga. Ya tengo el playbook casi completo.",
+      60: "Listo cuando quieras detener. Tengo suficiente para reproducirlo en cualquier tiendita.",
     };
     const message = scripts[elapsed];
     if (message && !announcedMappings.current.has(`script-${elapsed}`)) {
@@ -455,7 +455,7 @@ export default function TeachPage() {
           <Card>
             <CardContent className="p-4 space-y-3">
               <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary">
-                ¿Qué sistema querés observar?
+                ¿Qué sistema quieres observar?
               </p>
               <div className="flex items-center gap-3 flex-wrap">
                 <button

@@ -59,7 +59,7 @@ function fingerprintOf(snapshots: BrowserSnapshot[]): string {
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`infer:${ip}`, 30, 60_000)) {
-    return tooManyRequests("Demasiadas inferencias. Esperá unos segundos.");
+    return tooManyRequests("Demasiadas inferencias. Espera unos segundos.");
   }
 
   let body: { snapshots?: BrowserSnapshot[] };

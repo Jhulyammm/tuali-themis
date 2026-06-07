@@ -459,8 +459,8 @@ export default function ExecutePage() {
             Proceso en ejecución
           </p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-            <ContextRow label="Sistema A" value={shortUrl(sourceUrl)} />
-            <ContextRow label="Sistema B" value={shortUrl(destinationUrl)} />
+            <ContextRow label="Catálogo proveedor" value={shortUrl(sourceUrl)} />
+            <ContextRow label="ERP Tuali" value={shortUrl(destinationUrl)} />
             <ContextRow
               label="Playbook"
               value={state.selectedPb?.name ?? "—"}

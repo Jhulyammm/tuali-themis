@@ -58,7 +58,7 @@ interface BrowserSnapshot {
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`challenge:${ip}`, 5, 60_000)) {
-    return tooManyRequests("Máximo 5 retos por minuto. Esperá.");
+    return tooManyRequests("Máximo 5 retos por minuto. Espera.");
   }
 
   let body: ChallengeBody;

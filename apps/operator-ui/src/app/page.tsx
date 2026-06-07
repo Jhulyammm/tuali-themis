@@ -5,7 +5,7 @@ const CAPABILITIES = [
   {
     icon: Eye,
     title: "Aprende",
-    description: "Observa un proceso web una sola vez y extrae los mapeos con Claude.",
+    description: "Mira al tendero capturar SKUs una vez. Claude extrae los mapeos hacia Tuali.",
     href: "/teach",
     color: "text-status-info",
     bg: "bg-status-info-bg",
@@ -13,7 +13,7 @@ const CAPABILITIES = [
   {
     icon: Activity,
     title: "Habla",
-    description: "Narra cada paso en tiempo real con ElevenLabs + Whisper.",
+    description: "Narra cada paso al supervisor con voz mexicana — ElevenLabs + Whisper.",
     href: "/execute",
     color: "text-status-success",
     bg: "bg-status-success-bg",
@@ -21,7 +21,7 @@ const CAPABILITIES = [
   {
     icon: Sparkles,
     title: "Razona",
-    description: "Genera recomendaciones contextuales con Gemini Pro.",
+    description: "Sugiere surtido por zona con Gemini Pro — eventos locales, perfil de tiendita.",
     href: "/recommendations",
     color: "text-coral",
     bg: "bg-red-50",
@@ -30,7 +30,7 @@ const CAPABILITIES = [
   {
     icon: Brain,
     title: "Recuerda",
-    description: "Knowledge graph persistente en MongoDB Atlas.",
+    description: "Cada proveedor aprendido queda en MongoDB. El próximo tendero arranca desde memoria.",
     href: "/memory",
     color: "text-purple-600",
     bg: "bg-purple-50",
@@ -38,7 +38,7 @@ const CAPABILITIES = [
   {
     icon: ShieldCheck,
     title: "Verifica",
-    description: "Cada ejecución firmada y sellada en Solana devnet.",
+    description: "Cada mapping firmado en Solana devnet. Auditable por Arca sin tener que confiar.",
     href: "/validate",
     color: "text-status-success",
     bg: "bg-status-success-bg",
@@ -46,7 +46,7 @@ const CAPABILITIES = [
   {
     icon: Play,
     title: "Escala",
-    description: "Ejecuta autónomamente con Stagehand + self-healing ⚡.",
+    description: "Replica el playbook en cualquiera de las 1.4M de tienditas de Arca, con self-healing visual.",
     href: "/execute",
     color: "text-status-warning",
     bg: "bg-status-warning-bg",
@@ -67,8 +67,10 @@ export default function HomePage() {
             Aprende viendo. Razona<br />con contexto. Prueba en cadena.
           </h1>
           <p className="text-text-secondary text-lg leading-relaxed max-w-xl">
-            Themis era la diosa griega del orden divino. Hoy es el agente cognitivo
-            que mapea sistemas web que no se hablan — y lo prueba en blockchain.
+            Cada tiendita captura inventario manual entre el catálogo del proveedor
+            y el ERP de Tuali. Horas perdidas, errores que rompen el surtido.
+            Themis observa una vez, aprende el mapeo y lo reproduce — con cada paso
+            firmado en Solana para que nadie tenga que confiar a ciegas.
           </p>
           <div className="flex gap-3 pt-2">
             <Link
