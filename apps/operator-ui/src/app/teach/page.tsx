@@ -171,33 +171,39 @@ export default function TeachPage() {
     const sessionId = state.sessionId;
 
     if (!pollRef.current) {
-      // 2.5s entre polls. Sin observe() de Stagehand cada snapshot tarda <500ms.
+      // 2.5s entre polls. Cliente tolera errores transient (Browserbase
+      // tiene cold-start tras un attach + close). Solo damos error fatal
+      // si tenemos 5 fallos seguidos.
+      let consecutiveErrors = 0;
       pollRef.current = setInterval(async () => {
         try {
           const res = await fetch(
             `/api/browser/observe?sessionId=${encodeURIComponent(sessionId)}`,
           );
-          // 410 = sesión Browserbase expiró/cerró. Detener polling y narrar.
-          if (res.status === 410) {
-            if (pollRef.current) clearInterval(pollRef.current);
-            if (inferRef.current) clearInterval(inferRef.current);
-            pollRef.current = null;
-            inferRef.current = null;
-            dispatch({
-              type: "error",
-              message:
-                "La sesión Browserbase expiró. Reiniciá la observación.",
-            });
-            void speak(
-              "La sesión del navegador expiró. Por favor, reinicia la observación.",
-            );
+          if (!res.ok) {
+            consecutiveErrors++;
+            // Solo abortar si MUY persistente (10s+ de fallos)
+            if (consecutiveErrors >= 5) {
+              if (pollRef.current) clearInterval(pollRef.current);
+              if (inferRef.current) clearInterval(inferRef.current);
+              pollRef.current = null;
+              inferRef.current = null;
+              dispatch({
+                type: "error",
+                message:
+                  "La sesión Browserbase no responde tras varios intentos. Reiniciá.",
+              });
+              void speak(
+                "La sesión del navegador no responde. Por favor, reinicia.",
+              );
+            }
             return;
           }
-          if (!res.ok) return;
+          consecutiveErrors = 0;
           const data = (await res.json()) as { snapshot: ObservedSnapshot };
           dispatch({ type: "snapshot", snap: data.snapshot });
         } catch {
-          /* ignore transient */
+          consecutiveErrors++;
         }
       }, 2500);
     }

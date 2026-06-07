@@ -142,16 +142,15 @@ export async function createSession(
 /**
  * Toma una snapshot del estado actual de la sesión Browserbase remota.
  * Crea una instancia EFÍMERA de Stagehand attachada a la sesión existente.
+ *
+ * NO usamos isSessionAlive() pre-check porque la API de Browserbase devuelve
+ * PENDING/RUNNING dependiendo de si hay cliente attachado, y los estados
+ * cambian rápido entre nuestros polls. Confiamos en el attach: si falla,
+ * lo propagamos como error real.
  */
 export async function snapshot(sessionId: string): Promise<BrowserSnapshot> {
   if (!isValidSessionId(sessionId)) {
     throw new Error("Invalid sessionId format");
-  }
-
-  // Verificar que la sesión BROWSERBASE sigue viva antes de attach
-  const alive = await isSessionAlive(sessionId);
-  if (!alive) {
-    throw new Error("Browserbase session no longer alive");
   }
 
   const stagehand = buildStagehand(sessionId);
