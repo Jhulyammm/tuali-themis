@@ -168,14 +168,16 @@ export default function ValidatePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedPb.mappings?.map((m) => (
-                      <tr key={m.source_field} className="border-t border-border hover:bg-bg-elevated/50 transition-colors">
-                        <td className="px-5 py-3 font-medium text-text-primary">{m.source_field}</td>
-                        <td className="px-5 py-3 font-mono text-xs text-text-secondary">
-                          {m.examples[0]?.source_value ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {(selectedPb.mappings ?? [])
+                      .filter((m) => m && typeof m.source_field === "string")
+                      .map((m, i) => (
+                        <tr key={`${m.source_field}-${i}`} className="border-t border-border hover:bg-bg-elevated/50 transition-colors">
+                          <td className="px-5 py-3 font-medium text-text-primary">{m.source_field}</td>
+                          <td className="px-5 py-3 font-mono text-xs text-text-secondary">
+                            {m.examples?.[0]?.source_value ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               )}
@@ -205,33 +207,36 @@ export default function ValidatePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedPb?.mappings?.map((m, idx) => {
-                      const writtenValue =
-                        latestSku.data[normalizeFieldName(m.destination_field)]
-                        ?? latestSku.data[m.destination_field]
-                        ?? "—";
-                      const expected = m.examples[0]?.destination_value;
-                      const isMatch = expected && writtenValue === expected;
-                      return (
-                        <tr
-                          key={m.destination_field}
-                          className={[
-                            "border-t border-border transition-colors",
-                            matches[idx] === true ? "bg-status-success-bg" : matches[idx] === false ? "bg-red-50" : "",
-                          ].join(" ")}
-                        >
-                          <td className="px-5 py-3 font-medium text-text-primary">{m.destination_field}</td>
-                          <td className="px-5 py-3 font-mono text-xs text-text-secondary">{writtenValue}</td>
-                          <td className="px-5 py-3 text-center">
-                            {isMatch ? (
-                              <Check className="w-4 h-4 text-status-success inline" />
-                            ) : (
-                              <X className="w-4 h-4 text-status-error inline" />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {(selectedPb?.mappings ?? [])
+                      .filter((m) => m && typeof m.destination_field === "string")
+                      .map((m, idx) => {
+                        const data = latestSku.data ?? {};
+                        const writtenValue =
+                          data[normalizeFieldName(m.destination_field)] ??
+                          data[m.destination_field] ??
+                          "—";
+                        const expected = m.examples?.[0]?.destination_value;
+                        const isMatch = expected && writtenValue === expected;
+                        return (
+                          <tr
+                            key={`${m.destination_field}-${idx}`}
+                            className={[
+                              "border-t border-border transition-colors",
+                              matches[idx] === true ? "bg-status-success-bg" : matches[idx] === false ? "bg-red-50" : "",
+                            ].join(" ")}
+                          >
+                            <td className="px-5 py-3 font-medium text-text-primary">{m.destination_field}</td>
+                            <td className="px-5 py-3 font-mono text-xs text-text-secondary">{writtenValue}</td>
+                            <td className="px-5 py-3 text-center">
+                              {isMatch ? (
+                                <Check className="w-4 h-4 text-status-success inline" />
+                              ) : (
+                                <X className="w-4 h-4 text-status-error inline" />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               )}

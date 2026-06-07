@@ -142,19 +142,30 @@ function reducer(state: ExecState, action: ExecAction): ExecState {
  *
  * Siempre disponible en la lista de playbooks de /execute — el jurado lo
  * selecciona y ve a Themis materializar un proceso de captura completo.
+ *
+ * URLs vienen de env vars para que el iframe cargue el source-system real
+ * (Vercel propio) en lugar de un dominio falso .demo que daba DNS error.
  */
+const DEMO_SOURCE_URL =
+  process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL ??
+  "https://tuali-themis-source-system.vercel.app";
+const DEMO_DESTINATION_URL =
+  process.env.NEXT_PUBLIC_ERP_DESTINO_URL ??
+  process.env.NEXT_PUBLIC_OPERATOR_URL ??
+  "https://tuali-themis-prod.vercel.app";
+
 const DEMO_PLAYBOOK: Playbook = {
   id: "demo-tuali-coca-cola",
   name: "★ Tuali · Capturar SKU Coca-Cola desde catálogo proveedor",
   intent:
-    "Lee un producto del catálogo de Arca Continental, transforma precio (÷1.16) y lo registra en el ERP Tuali con denominación, código interno y precio sin IVA.",
-  source_url: "https://catalogo.arca-continental.demo/coca-cola-355",
-  destination_url: "https://erp.tuali.demo/captura/sku",
+    "Lee un producto del catálogo del proveedor (Arca Continental), transforma precio (÷1.16) y lo registra en el ERP Tuali con denominación, código interno y precio sin IVA.",
+  source_url: DEMO_SOURCE_URL,
+  destination_url: DEMO_DESTINATION_URL,
   version: 1,
   created_at: new Date().toISOString(),
   parameters: ["product_id"],
   steps: [
-    { action: "navigate", target: "https://catalogo.arca-continental.demo/coca-cola-355" },
+    { action: "navigate", target: DEMO_SOURCE_URL },
     { action: "wait_for", selector_intent: "tabla de productos cargada" },
     { action: "click", selector_intent: "fila del SKU buscado" },
     { action: "extract", selector_intent: "nombre comercial del producto", as: "denominacion" },
@@ -727,6 +738,10 @@ async function simulateExecution(
     (s, i) => i >= 2 && (s.action === "fill" || s.action === "click"),
   );
 
+  // Acumulamos logs localmente para persistir la ejecución en /api/executions
+  // al final. Sin esto, /registro no ve los runs del modo replay.
+  const collectedLogs: ExecutionLog[] = [];
+
   // Anuncios narrados al inicio para dar contexto al jurado
   if (steps.length > 4) {
     void speak(
@@ -766,6 +781,7 @@ async function simulateExecution(
         timestamp: new Date().toISOString(),
       };
       dispatch({ type: "step", log: adapting });
+      collectedLogs.push(adapting);
       void speak(
         "Detecté que el campo cambió de nombre. Adaptando con visión, sin perder el flujo.",
         "alert",
@@ -782,6 +798,7 @@ async function simulateExecution(
         timestamp: new Date().toISOString(),
       };
       dispatch({ type: "step", log: healed });
+      collectedLogs.push(healed);
       continue;
     }
 
@@ -793,6 +810,7 @@ async function simulateExecution(
       timestamp: new Date().toISOString(),
     };
     dispatch({ type: "step", log });
+    collectedLogs.push(log);
   }
 
   await new Promise((r) => setTimeout(r, 700));
@@ -803,7 +821,7 @@ async function simulateExecution(
     parameters: { product_id: productId },
     status: "succeeded",
     current_step_index: steps.length,
-    logs: [],
+    logs: collectedLogs,
     started_at: startedAt,
     ended_at: new Date().toISOString(),
     cost_breakdown: playbook.cost_breakdown,
@@ -812,6 +830,19 @@ async function simulateExecution(
       : undefined,
   };
   dispatch({ type: "done", execution });
+
+  // Persistimos en /api/executions para que /registro vea esta run.
+  // Best-effort — si MongoDB no está, cae a filesystem store.
+  try {
+    await fetch("/api/executions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ execution }),
+    });
+  } catch {
+    // silencioso — la ejecución ya se mostró en pantalla
+  }
+
   void speak(
     "Ejecución completada. Datos transferidos al sistema destino.",
     "triumphant",

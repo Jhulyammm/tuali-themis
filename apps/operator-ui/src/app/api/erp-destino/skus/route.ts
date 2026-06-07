@@ -15,30 +15,48 @@ export const dynamic = "force-dynamic";
 const ERP_DESTINO_URL =
   process.env.NEXT_PUBLIC_ERP_DESTINO_URL ?? "http://localhost:3001";
 
+// Shape que espera /validate: { id, created_at, data: Record<string,string> }
+// Los campos del data matchean los destination_fields del DEMO_PLAYBOOK
+// (denominacion_comercial, precio_neto_sin_iva, codigo_interno, etc).
 const MOCK_SKUS = [
   {
-    codigo_interno: "TUL-001",
-    denominacion_comercial: "Coca-Cola 600ml PET",
-    precio_neto_sin_iva: 12.50,
-    proveedor: "Arca Continental",
-    capturado_por: "Themis (replay)",
-    timestamp: new Date().toISOString(),
+    id: "sku-mock-001",
+    created_at: new Date().toISOString(),
+    data: {
+      codigo_interno: "TUL-CC-355",
+      denominacion_comercial: "Coca-Cola 355ml",
+      precio_neto_sin_iva: "12.50",
+      proveedor: "ARCA-CONTINENTAL",
+      linea_producto: "REFRESCOS",
+      presentacion: "355 ML",
+      stock_inicial: "240",
+    },
   },
   {
-    codigo_interno: "TUL-002",
-    denominacion_comercial: "Topo Chico Twist Limón 600ml",
-    precio_neto_sin_iva: 14.66,
-    proveedor: "Arca Continental",
-    capturado_por: "Themis (replay)",
-    timestamp: new Date().toISOString(),
+    id: "sku-mock-002",
+    created_at: new Date(Date.now() - 60_000).toISOString(),
+    data: {
+      codigo_interno: "TUL-TC-600",
+      denominacion_comercial: "Topo Chico Twist Limón 600ml",
+      precio_neto_sin_iva: "14.66",
+      proveedor: "ARCA-CONTINENTAL",
+      linea_producto: "AGUAS MINERALES",
+      presentacion: "600 ML",
+      stock_inicial: "120",
+    },
   },
   {
-    codigo_interno: "TUL-003",
-    denominacion_comercial: "Powerade Mountain Blast 500ml",
-    precio_neto_sin_iva: 18.10,
-    proveedor: "Arca Continental",
-    capturado_por: "Themis (replay)",
-    timestamp: new Date().toISOString(),
+    id: "sku-mock-003",
+    created_at: new Date(Date.now() - 120_000).toISOString(),
+    data: {
+      codigo_interno: "TUL-PW-500",
+      denominacion_comercial: "Powerade Mountain Blast 500ml",
+      precio_neto_sin_iva: "18.10",
+      proveedor: "ARCA-CONTINENTAL",
+      linea_producto: "ISOTONICOS",
+      presentacion: "500 ML",
+      stock_inicial: "90",
+    },
   },
 ];
 
