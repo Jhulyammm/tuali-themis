@@ -42,8 +42,13 @@ import type {
   SolanaProvenance,
 } from "@hack4her/playbooks";
 
-const SUGGESTED_URL =
-  process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL ?? "http://localhost:3002";
+function normalizeUrl(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "https://www.arcacontal.com";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+const SUGGESTED_URL = normalizeUrl(process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL);
 
 interface ObservedSnapshot {
   taken_at: string;
@@ -161,10 +166,10 @@ export default function TeachPage() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const announcedMappings = useRef<Set<string>>(new Set());
 
-  // El startUrl efectivo
+  // El startUrl efectivo, normalizado (auto-prefix https://)
   const effectiveUrl =
     urlMode === "custom" && customUrl.trim().length > 0
-      ? customUrl.trim()
+      ? normalizeUrl(customUrl)
       : SUGGESTED_URL;
 
   useEffect(() => {
@@ -867,7 +872,7 @@ function hostnameOf(url: string): string {
 
 function isValidPublicUrl(url: string): boolean {
   try {
-    const u = new URL(url);
+    const u = new URL(normalizeUrl(url));
     return (
       (u.protocol === "https:" || u.protocol === "http:") &&
       u.hostname.length > 0

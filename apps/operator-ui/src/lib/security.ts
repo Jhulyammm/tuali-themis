@@ -96,11 +96,25 @@ export function isBlockedHost(host: string): boolean {
 export function validateStartUrl(
   rawUrl: string,
 ): { ok: true; url: URL } | { ok: false; reason: string } {
+  // Normaliza: trim espacios, agrega https:// si no tiene protocolo, valida
+  // hostname sin paths sueltos. Esto evita rechazos sospechosos por env vars
+  // mal pegadas en Vercel ("arcacontal.com" en vez de "https://arcacontal.com").
+  const normalized = (rawUrl ?? "").trim();
+  if (normalized.length === 0) {
+    return { ok: false, reason: "URL vacía" };
+  }
+  const withProtocol = /^https?:\/\//i.test(normalized)
+    ? normalized
+    : `https://${normalized}`;
+
   let parsed: URL;
   try {
-    parsed = new URL(rawUrl);
+    parsed = new URL(withProtocol);
   } catch {
-    return { ok: false, reason: "Invalid URL" };
+    return {
+      ok: false,
+      reason: `URL malformada: '${rawUrl.slice(0, 100)}'`,
+    };
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
