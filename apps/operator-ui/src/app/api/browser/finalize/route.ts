@@ -20,7 +20,6 @@ import { extractPlaybookFromRecording } from "@hack4her/agent/playbook";
 import { createSolanaClientFromEnv } from "@hack4her/agent/blockchain";
 import {
   closeSession,
-  snapshot as captureSnapshot,
   type BrowserSnapshot,
 } from "@hack4her/agent/browser";
 import { saveSavedPlaybook } from "@hack4her/db";
@@ -82,10 +81,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // ESTRATEGIA: fetch directo HTTP al startUrl (saltándose Browserbase).
-    // Browserbase nos da el WOW visual del iframe pero sus sesiones serverless
-    // son frágiles. Para extraer datos REALES del sitio, usamos fetch HTTP
-    // directo desde el server. Claude infiere playbook desde el HTML real.
+    // FUENTE DE VERDAD: fetch HTTP directo al startUrl.
+    // No usamos Browserbase para extraer datos — la sesión serverless es muy
+    // frágil. El iframe Browserbase queda solo para el wow visual del demo.
     let allSnapshots: BrowserSnapshot[] = body.snapshots ?? [];
 
     try {
@@ -96,19 +94,6 @@ export async function POST(request: NextRequest) {
         "[/api/browser/finalize] direct HTTP fetch failed:",
         (err as Error).message,
       );
-    }
-
-    // Fallback opcional: capturar via Browserbase si la sesión sigue viva
-    if (allSnapshots.length === 0) {
-      try {
-        const freshSnapshot = await captureSnapshot(sessionId);
-        allSnapshots = [...allSnapshots, freshSnapshot];
-      } catch (err) {
-        console.warn(
-          "[/api/browser/finalize] Browserbase snapshot fallback failed:",
-          (err as Error).message,
-        );
-      }
     }
 
     if (allSnapshots.length === 0) {

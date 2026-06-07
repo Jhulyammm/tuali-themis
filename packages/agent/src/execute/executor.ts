@@ -20,7 +20,6 @@ import type {
 } from "@hack4her/playbooks";
 import { selfHealStep } from "./self-healing";
 import {
-  createSession,
   closeSession,
   attachStagehand,
 } from "../browser/session-manager";
@@ -68,26 +67,32 @@ export async function executePlaybook(
     started_at: new Date().toISOString(),
   };
 
-  // Decide si reusamos sesión o creamos una nueva via el SessionManager
-  // (que se encarga de resolver el debuggerUrl iframe-able).
+  // Crear Stagehand UNA sola vez. En el caso de "sin existingSessionId"
+  // Stagehand crea la sesión Browserbase nueva en init() y la mantiene viva
+  // hasta close(). Esto evita el problema de Browserbase cerrando sesiones
+  // entre attach/detach en serverless.
   let stagehand: Stagehand;
   let ownsSession = false;
   let sessionId: string | undefined;
   let debuggerUrl: string | undefined;
 
   if (config.existingSessionId) {
-    // Stateless: nos re-conectamos a la sesión Browserbase existente
     stagehand = attachStagehand(config.existingSessionId);
     sessionId = config.existingSessionId;
     await stagehand.init();
   } else {
-    const handle = await createSession({ startUrl: playbook.source_url });
-    sessionId = handle.sessionId;
-    debuggerUrl = handle.debuggerUrl;
-    // Para una sesión recién creada, también necesitamos attach (la sesión
-    // está viva en Browserbase, createSession ya cerró su Stagehand local).
-    stagehand = attachStagehand(sessionId);
-    await stagehand.init();
+    // Stagehand crea sesión Browserbase + se attacha en una sola operación
+    stagehand = new Stagehand({
+      env: "BROWSERBASE",
+      apiKey: process.env.BROWSERBASE_API_KEY,
+      projectId: process.env.BROWSERBASE_PROJECT_ID,
+      modelName: process.env.STAGEHAND_MODEL ?? "claude-haiku-4-5",
+      modelClientOptions: { apiKey: process.env.ANTHROPIC_API_KEY },
+      disablePino: true,
+    });
+    const init = await stagehand.init();
+    sessionId = stagehand.browserbaseSessionID ?? init.sessionId;
+    debuggerUrl = init.debugUrl;
     ownsSession = true;
   }
 
@@ -99,10 +104,19 @@ export async function executePlaybook(
     // Setup context for parameter substitution + extracted variables
     const context: Record<string, unknown> = { ...config.parameters };
 
-    // Si reusamos sesión existente y queremos asegurar el source_url, navegar.
-    // (Si la creamos nosotros, createSession ya navegó.)
-    if (!ownsSession && playbook.source_url) {
-      await stagehand.page.goto(playbook.source_url);
+    // Navegación inicial al source_url del playbook
+    if (playbook.source_url) {
+      try {
+        await stagehand.page.goto(playbook.source_url, {
+          waitUntil: "domcontentloaded",
+          timeout: 20000,
+        });
+      } catch (err) {
+        console.warn(
+          "[executor] initial goto failed:",
+          (err as Error).message,
+        );
+      }
     }
 
     // Run steps secuencialmente
