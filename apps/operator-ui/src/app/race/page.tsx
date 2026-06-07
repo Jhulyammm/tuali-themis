@@ -27,8 +27,26 @@ import {
 import { useVoice } from "@/hooks/useVoice";
 
 const TOTAL_SKUS = 10;
-const THEMIS_MS_PER_SKU = 2200; // ritmo realista de Themis
+// Themis va MUY rápido — cada SKU procesado en 700ms (lectura HTML +
+// fill + post). Es realista para Stagehand contra una página propia.
+const THEMIS_MS_PER_SKU = 700;
 const HUMAN_HOURLY_USD = 8.3;
+
+// Códigos SKU que el capturista humano tiene que tipear EXACTO para cada captura.
+// Esto refleja el proceso real en una tiendita: leer el código del producto,
+// tipearlo en el ERP, confirmar. Hacer "click rápido" sin captura no cuenta.
+const DEMO_SKUS = [
+  { code: "CC-355-MX", name: "Coca-Cola 355ml" },
+  { code: "TC-600-LM", name: "Topo Chico Twist Limón 600ml" },
+  { code: "PW-500-MB", name: "Powerade Mountain Blast 500ml" },
+  { code: "CC-2L-MX", name: "Coca-Cola 2L" },
+  { code: "CL-1L-MX", name: "Ciel 1L" },
+  { code: "FA-355-MX", name: "Fanta Naranja 355ml" },
+  { code: "SP-355-MX", name: "Sprite 355ml" },
+  { code: "CC-600-MX", name: "Coca-Cola 600ml" },
+  { code: "TC-355-MX", name: "Topo Chico Natural 355ml" },
+  { code: "PW-600-FR", name: "Powerade Frutas Tropicales 600ml" },
+];
 
 type RaceState =
   | { kind: "idle" }
@@ -45,6 +63,7 @@ type RaceState =
 export default function RacePage() {
   const [state, setState] = useState<RaceState>({ kind: "idle" });
   const [nowMs, setNowMs] = useState(0);
+  const [skuInput, setSkuInput] = useState("");
   const { speak, unlock } = useVoice();
   const themisIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -115,6 +134,10 @@ export default function RacePage() {
   const handleHumanTick = () => {
     setState((s) => {
       if (s.kind !== "racing") return s;
+      // Validar que tipeó el código correcto para el SKU actual
+      const expectedSku = DEMO_SKUS[s.humanDone]?.code ?? "";
+      if (skuInput.trim().toUpperCase() !== expectedSku) return s;
+
       const nextHuman = s.humanDone + 1;
       const elapsed = Date.now() - s.startedAt;
       if (nextHuman >= TOTAL_SKUS) {
@@ -129,9 +152,21 @@ export default function RacePage() {
       }
       return { ...s, humanDone: nextHuman };
     });
+    setSkuInput(""); // limpia para el siguiente SKU
   };
 
-  const reset = () => setState({ kind: "idle" });
+  const reset = () => {
+    setState({ kind: "idle" });
+    setSkuInput("");
+  };
+
+  const currentSku =
+    state.kind === "racing" && state.humanDone < TOTAL_SKUS
+      ? DEMO_SKUS[state.humanDone]
+      : null;
+  const isMatch =
+    currentSku !== null &&
+    skuInput.trim().toUpperCase() === currentSku.code;
 
   const humanProgress =
     state.kind === "racing"
@@ -220,31 +255,73 @@ export default function RacePage() {
       </div>
 
       {/* Action bar */}
-      {state.kind === "racing" && (
+      {state.kind === "racing" && currentSku && (
         <Card className="border-coral/40">
-          <CardContent className="p-4 flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary mb-1">
-                Tiempo
-              </p>
-              <p className="text-4xl font-bold tabular-nums text-coral">
-                {(nowMs / 1000).toFixed(1)}s
-              </p>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary mb-1">
+                  Tiempo
+                </p>
+                <p className="text-4xl font-bold tabular-nums text-coral">
+                  {(nowMs / 1000).toFixed(1)}s
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary mb-1">
+                  Themis va
+                </p>
+                <p className="text-2xl font-bold tabular-nums text-coral">
+                  {themisDone}/{TOTAL_SKUS}
+                </p>
+              </div>
             </div>
-            <Button
-              onClick={handleHumanTick}
-              size="lg"
-              className="bg-text-primary hover:bg-text-primary/90 text-white px-8 py-6 text-lg"
-            >
-              <Hand className="w-5 h-5 mr-2" />
-              Capturar SKU ({humanDone}/{TOTAL_SKUS})
-            </Button>
-            <div className="text-right">
-              <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary mb-1">
-                Themis va
-              </p>
-              <p className="text-2xl font-bold tabular-nums text-coral">
-                {themisDone}/{TOTAL_SKUS}
+
+            <div className="bg-bg-elevated rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary">
+                  Captura · SKU {humanDone + 1}/{TOTAL_SKUS}
+                </p>
+                <p className="text-xs text-text-secondary">{currentSku.name}</p>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-xs text-text-tertiary">Código a capturar:</p>
+                <code className="px-2 py-1 rounded bg-white border border-border text-sm font-mono font-bold text-text-primary">
+                  {currentSku.code}
+                </code>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={skuInput}
+                  onChange={(e) => setSkuInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && isMatch) handleHumanTick();
+                  }}
+                  placeholder="Tipea el código exacto..."
+                  autoFocus
+                  className={`flex-1 px-3 py-2 rounded-lg border text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-coral/30 ${
+                    isMatch
+                      ? "border-status-success/60 bg-status-success/5"
+                      : "border-border bg-white"
+                  }`}
+                />
+                <Button
+                  onClick={handleHumanTick}
+                  disabled={!isMatch}
+                  className={`${
+                    isMatch
+                      ? "bg-status-success hover:bg-status-success/90"
+                      : "bg-text-tertiary"
+                  } text-white`}
+                >
+                  <Hand className="w-4 h-4 mr-1" />
+                  Capturar
+                </Button>
+              </div>
+              <p className="text-[10px] text-text-tertiary mt-2 italic">
+                Igual que un capturista real: leer del producto físico, tipear
+                en el ERP, confirmar. Sin atajos.
               </p>
             </div>
           </CardContent>

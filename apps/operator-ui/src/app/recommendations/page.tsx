@@ -113,6 +113,55 @@ const PLACEHOLDER_ZONE: ZoneContext = {
   nearby_institutions: [],
 };
 
+// Sucursales demo precargadas. URL params = contrato real del cliente Tuali.
+// El baseline es opcional pero rico para que Themis razone con histórico.
+const DEMO_SUCURSALES = [
+  {
+    label: "Abarrotes Don Beto",
+    hint: "Mty · familiar",
+    params: new URLSearchParams({
+      sucursal_id: "ABA-001",
+      nombre: "Abarrotes Don Beto",
+      tipo: "Abarrotes",
+      ciudad: "Monterrey",
+      zona: "Colonia Obrera",
+      perfil: "familiar",
+      referencia: "Mercado Juárez",
+      baseline:
+        "Coca-Cola 600ml:120;Topo Chico 600ml:80;Powerade 500ml:30;Sabritas 150g:60",
+    }).toString(),
+  },
+  {
+    label: "OXXO Tec",
+    hint: "Mty · universitaria",
+    params: new URLSearchParams({
+      sucursal_id: "OXX-2841",
+      nombre: "OXXO Tec de Monterrey",
+      tipo: "Tienda de conveniencia",
+      ciudad: "Monterrey",
+      zona: "Tecnológico",
+      perfil: "universitaria",
+      referencia: "Tec de Monterrey Campus MTY",
+      baseline:
+        "Coca-Cola 600ml:240;Powerade 500ml:90;Topo Chico Twist Limón:60;Ciel 1L:180",
+    }).toString(),
+  },
+  {
+    label: "Misceláneas García",
+    hint: "Cdmx · turística",
+    params: new URLSearchParams({
+      sucursal_id: "MIS-018",
+      nombre: "Misceláneas García",
+      tipo: "Miscelánea",
+      ciudad: "Ciudad de México",
+      zona: "Centro Histórico",
+      perfil: "turistica",
+      referencia: "Zócalo CDMX",
+      baseline: "Coca-Cola 355ml:300;Ciel 600ml:200;Powerade 500ml:50",
+    }).toString(),
+  },
+];
+
 function RecommendationsView() {
   const searchParams = useSearchParams();
   const sucursal = useMemo(
@@ -160,7 +209,7 @@ function RecommendationsView() {
       <div className="max-w-6xl mx-auto space-y-8">
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-1">
             <p className="font-mono text-[11px] uppercase tracking-widest text-text-tertiary">
               Capa 3 · Cognitive Reasoning · Gemini Pro
@@ -174,6 +223,33 @@ function RecommendationsView() {
             </p>
           </div>
         </div>
+
+        {/* Quick-load demo: sucursales sample para que el jurado pruebe sin tipear */}
+        {!sucursal && (
+          <div className="bg-coral/5 border border-coral/30 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-coral" />
+              <p className="text-sm font-semibold text-text-primary">
+                Sucursales demo
+              </p>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary">
+                cargá una con 1 click
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {DEMO_SUCURSALES.map((d) => (
+                <a
+                  key={d.label}
+                  href={`/recommendations?${d.params}`}
+                  className="text-xs px-3 py-2 rounded-lg bg-white border border-border hover:border-coral hover:bg-coral/5 hover:text-coral transition-colors"
+                >
+                  <span className="font-semibold">{d.label}</span>
+                  <span className="text-text-tertiary ml-1">· {d.hint}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 

@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
   // estos node_modules en los lambdas que usan Stagehand/Solana/Mongo.
   // Sin esto, Vercel a veces omite deps externalizadas en monorepo pnpm.
   outputFileTracingIncludes: {
+    // Datasets de fallback para Capa 3 (zonas y eventos calendario). Sin esto,
+    // /api/events y /api/recommendations no encuentran los JSON cuando Gemini
+    // está rate-limited o sin cuota.
+    "/api/events/**": ["../../data/**/*.json"],
+    "/api/recommendations/**": ["../../data/**/*.json"],
     "/api/browser/**": [
       "../../node_modules/.pnpm/@browserbasehq+stagehand@**/node_modules/@browserbasehq/stagehand/**",
       "../../node_modules/.pnpm/@browserbasehq+sdk@**/node_modules/@browserbasehq/sdk/**",

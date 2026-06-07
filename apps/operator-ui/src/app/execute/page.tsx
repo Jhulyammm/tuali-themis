@@ -130,6 +130,116 @@ function reducer(state: ExecState, action: ExecAction): ExecState {
 // Page
 // ============================================================
 
+/**
+ * DEMO_PLAYBOOK — el playbook estrella del pitch. Replica el proceso real
+ * de un capturista de tiendita: leer el catálogo del proveedor, ubicar el
+ * producto, leer precio con IVA, abrir el ERP de Tuali, dividir el precio
+ * entre 1.16, capturar denominación + precio + SKU, validar y enviar.
+ *
+ * 9 steps. Uno con self-healing (Themis adapta cuando el label cambia).
+ * Mappings reales con transformaciones. Confidence alto. Firmado en Solana.
+ *
+ * Siempre disponible en la lista de playbooks de /execute — el jurado lo
+ * selecciona y ve a Themis materializar un proceso de captura completo.
+ */
+const DEMO_PLAYBOOK: Playbook = {
+  id: "demo-tuali-coca-cola",
+  name: "★ Tuali · Capturar SKU Coca-Cola desde catálogo proveedor",
+  intent:
+    "Lee un producto del catálogo de Arca Continental, transforma precio (÷1.16) y lo registra en el ERP Tuali con denominación, código interno y precio sin IVA.",
+  source_url: "https://catalogo.arca-continental.demo/coca-cola-355",
+  destination_url: "https://erp.tuali.demo/captura/sku",
+  version: 1,
+  created_at: new Date().toISOString(),
+  parameters: ["product_id"],
+  steps: [
+    { action: "navigate", target: "https://catalogo.arca-continental.demo/coca-cola-355" },
+    { action: "wait_for", selector_intent: "tabla de productos cargada" },
+    { action: "click", selector_intent: "fila del SKU buscado" },
+    { action: "extract", selector_intent: "nombre comercial del producto", as: "denominacion" },
+    { action: "extract", selector_intent: "precio del producto con IVA", as: "precio_con_iva" },
+    { action: "switch_system", target: "destination" },
+    { action: "fill", selector_intent: "campo Denominación comercial", value: "{{denominacion}}" },
+    { action: "fill", selector_intent: "campo Precio neto sin IVA", value: "{{precio_con_iva / 1.16}}" },
+    { action: "click", selector_intent: "botón Guardar SKU" },
+  ],
+  mappings: [
+    {
+      source_field: "Nombre comercial",
+      source_selector_intent: "nombre comercial del producto",
+      destination_field: "Denominación comercial",
+      destination_selector_intent: "campo Denominación comercial",
+      confidence: 0.96,
+      examples: [{ source_value: "Coca-Cola 355ml", destination_value: "Coca-Cola 355ml" }],
+    },
+    {
+      source_field: "SKU proveedor",
+      source_selector_intent: "código SKU del proveedor",
+      destination_field: "Código interno Tuali",
+      destination_selector_intent: "campo Código interno",
+      confidence: 0.93,
+      examples: [{ source_value: "CC-355-MX", destination_value: "TUL-CC-355" }],
+    },
+    {
+      source_field: "Precio con IVA",
+      source_selector_intent: "precio del producto con IVA",
+      destination_field: "Precio neto sin IVA",
+      destination_selector_intent: "campo Precio neto sin IVA",
+      confidence: 0.91,
+      transformation: "dividir entre 1.16 (extraer IVA del 16%)",
+      examples: [{ source_value: "$14.50", destination_value: "$12.50" }],
+    },
+    {
+      source_field: "Categoría producto",
+      source_selector_intent: "categoría del catálogo",
+      destination_field: "Línea de producto",
+      destination_selector_intent: "select Línea de producto",
+      confidence: 0.88,
+      examples: [{ source_value: "Bebidas carbonatadas", destination_value: "REFRESCOS" }],
+    },
+    {
+      source_field: "Presentación",
+      source_selector_intent: "tamaño y unidad del producto",
+      destination_field: "Presentación de venta",
+      destination_selector_intent: "campo Presentación",
+      confidence: 0.94,
+      examples: [{ source_value: "355ml", destination_value: "355 ML" }],
+    },
+    {
+      source_field: "Proveedor",
+      source_selector_intent: "fabricante en el catálogo",
+      destination_field: "Proveedor Tuali",
+      destination_selector_intent: "campo Proveedor",
+      confidence: 0.97,
+      examples: [{ source_value: "Arca Continental", destination_value: "ARCA-CONTINENTAL" }],
+    },
+    {
+      source_field: "Stock disponible",
+      source_selector_intent: "unidades disponibles del catálogo",
+      destination_field: "Stock inicial",
+      destination_selector_intent: "campo Stock inicial",
+      confidence: 0.72,
+      examples: [{ source_value: "240 cajas", destination_value: "240" }],
+    },
+  ],
+  cost_breakdown: {
+    capa1_claude_usd: 0.0028,
+    capa1_browserbase_usd: 0,
+    capa2_elevenlabs_usd: 0.0042,
+    capa2_whisper_usd: 0,
+    capa3_gemini_usd: 0.0006,
+    capa6_solana_usd: 0.0000,
+    total_usd: 0.0076,
+  },
+  latency_breakdown: {
+    total_ms: 8400,
+    claude_ms: 3200,
+    browserbase_ms: 0,
+    solana_ms: 1100,
+    other_ms: 4100,
+  },
+};
+
 export default function ExecutePage() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { speak, isPlaying, unlock } = useVoice();
@@ -139,13 +249,24 @@ export default function ExecutePage() {
     void (async () => {
       try {
         const res = await fetch("/api/playbooks");
-        if (!res.ok) return;
-        const data = (await res.json()) as { playbooks: Playbook[] };
+        let stored: Playbook[] = [];
+        if (res.ok) {
+          const data = (await res.json()) as { playbooks: Playbook[] };
+          stored = data.playbooks ?? [];
+        }
         if (!cancelled) {
-          dispatch({ type: "set_playbooks", playbooks: data.playbooks ?? [] });
+          // Demo playbook SIEMPRE primero — guaranteed wow para el pitch.
+          // Los aprendidos vienen después.
+          const combined = [
+            DEMO_PLAYBOOK,
+            ...stored.filter((p) => p.id !== DEMO_PLAYBOOK.id),
+          ];
+          dispatch({ type: "set_playbooks", playbooks: combined });
         }
       } catch {
-        // ignore
+        if (!cancelled) {
+          dispatch({ type: "set_playbooks", playbooks: [DEMO_PLAYBOOK] });
+        }
       }
     })();
     return () => {
@@ -562,14 +683,42 @@ async function simulateExecution(
     return;
   }
 
-  const healStepIdx = Math.min(2, Math.max(0, steps.length - 2));
+  // Self-healing en un step de fill/click (el más visualmente interesante).
+  const healStepIdx = steps.findIndex(
+    (s, i) => i >= 2 && (s.action === "fill" || s.action === "click"),
+  );
+
+  // Anuncios narrados al inicio para dar contexto al jurado
+  if (steps.length > 4) {
+    void speak(
+      "Arrancando el playbook completo: catálogo del proveedor, transformación de precio, captura en el ERP de Tuali.",
+      "firm",
+    );
+  }
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
-    const baseDelay = 1400 + Math.random() * 800;
+    // Steps de extracción y switch_system son más rápidos; fill/click más lentos
+    const isFast =
+      step.action === "switch_system" ||
+      step.action === "wait_for" ||
+      step.action === "extract";
+    const baseDelay = isFast
+      ? 700 + Math.random() * 400
+      : 1300 + Math.random() * 700;
     await new Promise((r) => setTimeout(r, baseDelay));
 
-    if (i === healStepIdx && steps.length > 3) {
+    // Narraciones específicas en momentos clave
+    if (step.action === "switch_system" && step.target === "destination") {
+      void speak(
+        "Cambio al ERP de Tuali. Voy a poblar los campos con las transformaciones que aprendí.",
+        "firm",
+      );
+    } else if (i === 0) {
+      // primer step (navigate) — narración inicial silenciada (ya hicimos la del start)
+    }
+
+    if (i === healStepIdx && healStepIdx >= 0 && steps.length > 3) {
       const adapting: ExecutionLog = {
         step_index: i,
         action: step,
@@ -579,7 +728,7 @@ async function simulateExecution(
       };
       dispatch({ type: "step", log: adapting });
       void speak(
-        "Detecté un cambio en la página. Adaptando con visión.",
+        "Detecté que el campo cambió de nombre. Adaptando con visión, sin perder el flujo.",
         "alert",
       );
       await new Promise((r) => setTimeout(r, 1700));

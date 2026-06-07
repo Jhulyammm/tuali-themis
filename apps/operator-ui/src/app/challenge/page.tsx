@@ -47,10 +47,14 @@ type State =
   | { kind: "success"; result: ChallengeResult; elapsedMs: number }
   | { kind: "error"; message: string };
 
+// URLs con formularios HTML reales — Themis necesita inputs/labels/selects
+// para extraer mappings. Sites corporativos puros (arcacontal.com,
+// coca-colacompany.com) no exponen forms públicos → 0 mappings → Grade F.
+// Estas tres garantizan que el demo siempre devuelva mappings ricos.
 const SUGGESTION_URLS = [
-  "https://www.arcacontal.com",
-  "https://www.coca-colacompany.com/brands",
-  "https://es.wikipedia.org/wiki/Coca-Cola",
+  "https://httpbin.org/forms/post",
+  "https://www.amazon.com.mx/registries/wishlist/create",
+  "https://www.bestbuy.com.mx/login.jsp",
 ];
 
 export default function ChallengePage() {
@@ -88,7 +92,11 @@ export default function ChallengePage() {
       "firm",
     );
 
-    setState({ kind: "running", elapsedMs: 0, startedAt: Date.now() });
+    // Capturamos el startedAt en una const ANTES del await. Sin esto, al
+    // resolverse el fetch, state.kind ya es "success" y state.startedAt no
+    // existe en el closure → elapsed sale 0.0s.
+    const startedAt = Date.now();
+    setState({ kind: "running", elapsedMs: 0, startedAt });
 
     try {
       const res = await fetch("/api/challenge", {
@@ -103,7 +111,7 @@ export default function ChallengePage() {
       }
 
       const result = (await res.json()) as ChallengeResult;
-      const elapsed = Date.now() - (state.kind === "running" ? state.startedAt : Date.now());
+      const elapsed = Date.now() - startedAt;
       setState({ kind: "success", result, elapsedMs: elapsed });
 
       const mappings = result.playbook.mappings?.length ?? 0;
