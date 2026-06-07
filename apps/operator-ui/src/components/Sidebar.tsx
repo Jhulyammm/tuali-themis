@@ -92,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Operación",
     items: [
       { label: "Inicio",           href: "/",                icon: IconInicio },
+      { label: "Clientes Tuali",   href: "/clients",          icon: IconClientes },
       { label: "Observación",      href: "/teach",            icon: IconObservacion },
       { label: "Reto del jurado",  href: "/challenge",        icon: IconReto },
       { label: "Carrera",          href: "/race",             icon: IconCarrera },
@@ -113,6 +114,12 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Verificación",     href: "/validate",         icon: IconVerificacion },
       { label: "Comparativo",      href: "/comparativo",      icon: IconComparativo },
       { label: "Producción",       href: "/produccion",       icon: IconProduccion },
+    ],
+  },
+  {
+    title: "Plataforma",
+    items: [
+      { label: "MCP Server",       href: "/mcp",              icon: IconMcp },
     ],
   },
 ];
@@ -141,6 +148,27 @@ function IconCarrera({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  );
+}
+function IconClientes({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18" />
+      <path d="M6 21V8l6-4 6 4v13" />
+      <path d="M10 21v-5h4v5" />
+      <path d="M9 9h.01" />
+      <path d="M15 9h.01" />
+    </svg>
+  );
+}
+function IconMcp({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="8" rx="2" />
+      <rect x="2" y="14" width="20" height="8" rx="2" />
+      <path d="M6 6h.01" />
+      <path d="M6 18h.01" />
     </svg>
   );
 }

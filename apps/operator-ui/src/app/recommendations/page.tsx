@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RecommendationsPanel } from "@/components/RecommendationsPanel";
 import { useRecommendations } from "@/hooks/useRecommendations";
 import { useContextualEvents } from "@/hooks/useContextualEvents";
+import { useActiveClient } from "@/hooks/useActiveClient";
 import type { ZoneContext } from "@hack4her/playbooks";
 
 // ============================================================
@@ -164,15 +165,31 @@ const DEMO_SUCURSALES = [
 
 function RecommendationsView() {
   const searchParams = useSearchParams();
-  const sucursal = useMemo(
-    () => parseSucursal(new URLSearchParams(searchParams.toString())),
-    [searchParams],
-  );
-  // Último pedido enviado a la sucursal (recibido del cliente vía API/URL).
-  const lastBaseline = useMemo(
-    () => parseBaseline(new URLSearchParams(searchParams.toString())),
-    [searchParams],
-  );
+  const { activeClient } = useActiveClient();
+
+  // La sucursal viene de: 1) query params (cliente vía API/URL externa) o
+  // 2) el cliente activo del selector global (modo multi-tenant Tuali).
+  const sucursal = useMemo(() => {
+    const fromUrl = parseSucursal(new URLSearchParams(searchParams.toString()));
+    if (fromUrl) return fromUrl;
+    if (activeClient) {
+      return {
+        id: activeClient.id,
+        nombre: activeClient.name,
+        tipo: activeClient.brand,
+        referencia: activeClient.zone.nearby_institutions?.[0],
+        zone: activeClient.zone,
+      };
+    }
+    return null;
+  }, [searchParams, activeClient]);
+
+  // Baseline: query param > cliente activo > vacío
+  const lastBaseline = useMemo(() => {
+    const fromUrl = parseBaseline(new URLSearchParams(searchParams.toString()));
+    if (Object.keys(fromUrl).length > 0) return fromUrl;
+    return activeClient?.baseline_skus ?? {};
+  }, [searchParams, activeClient]);
   const hasBaseline = Object.keys(lastBaseline).length > 0;
 
   const { fetch, response, loading, error } = useRecommendations();

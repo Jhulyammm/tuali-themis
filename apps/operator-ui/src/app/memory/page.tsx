@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MemoryGraphView, LearnedMappingRecord } from "@/components/MemoryGraphView";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Brain, Search } from "lucide-react";
+import { useActiveClient } from "@/hooks/useActiveClient";
 import type { Playbook, SolanaProvenance } from "@hack4her/playbooks";
 
 const MOCK_FALLBACK: LearnedMappingRecord[] = [
@@ -32,12 +33,14 @@ interface BackendStatus {
 }
 
 export default function MemoryPage() {
+  const { activeClient, clients } = useActiveClient();
   const [mappings, setMappings] = useState<LearnedMappingRecord[]>([]);
   const [status, setStatus] = useState<BackendStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todos");
+  const [scopeAllClients, setScopeAllClients] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
@@ -58,15 +61,32 @@ export default function MemoryPage() {
 
   useEffect(() => { void loadAll(); }, []);
 
-  const realCount = mappings.filter((m) => m.id !== "demo-1").length;
-  const verifiedCount = mappings.filter((m) => m.provenance).length;
+  // Filtro por cliente activo (multi-tenant). Si scope es "todos los clientes",
+  // mostramos todo. Si no, solo los mappings cuyos playbook_id pertenezcan al
+  // cliente activo.
+  const clientFiltered = useMemo(() => {
+    if (scopeAllClients || !activeClient) return mappings;
+    const allowedPbIds = new Set(activeClient.playbook_ids ?? []);
+    if (allowedPbIds.size === 0) return mappings; // sin filtro hasta que aprenda
+    return mappings.filter((m) => {
+      const pbId = m.id.split("::")[0];
+      return allowedPbIds.has(pbId);
+    });
+  }, [mappings, activeClient, scopeAllClients]);
+
+  const realCount = clientFiltered.filter((m) => m.id !== "demo-1").length;
+  const verifiedCount = clientFiltered.filter((m) => m.provenance).length;
   const avgConfidence =
-    mappings.length > 0
-      ? Math.round((mappings.reduce((s, m) => s + m.confidence, 0) / mappings.length) * 100)
+    clientFiltered.length > 0
+      ? Math.round(
+          (clientFiltered.reduce((s, m) => s + m.confidence, 0) /
+            clientFiltered.length) *
+            100,
+        )
       : 0;
 
-  // Client-side filtering
-  const filtered = mappings.filter((m) => {
+  // Search + destination filter on top of client filter
+  const filtered = clientFiltered.filter((m) => {
     const matchSearch =
       !search ||
       m.source_field.toLowerCase().includes(search.toLowerCase()) ||
@@ -82,22 +102,50 @@ export default function MemoryPage() {
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-1">
             <p className="font-mono text-[11px] uppercase tracking-widest text-text-tertiary">
               Capa 4 · Knowledge Graph · Capa 6 · Solana Provenance
             </p>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary">
-              Memoria de Themis
+              {activeClient && !scopeAllClients ? (
+                <>
+                  Memoria de{" "}
+                  <span className="text-coral">
+                    {activeClient.emoji} {activeClient.brand}
+                  </span>
+                </>
+              ) : (
+                "Memoria de Themis"
+              )}
             </h1>
             <p className="text-sm text-text-secondary">
-              Cada mapeo aprendido se guarda — verificable en Solana, reutilizable cross-cliente.
+              {activeClient && !scopeAllClients
+                ? `Mapeos aprendidos para ${activeClient.name} — reutilizables cross-cliente.`
+                : "Cada mapeo aprendido se guarda — verificable en Solana, reutilizable cross-cliente."}
             </p>
           </div>
-          <Button onClick={loadAll} disabled={loading} variant="secondary">
-            <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
-            Refrescar
-          </Button>
+          <div className="flex items-center gap-2">
+            {activeClient && (
+              <button
+                type="button"
+                onClick={() => setScopeAllClients((v) => !v)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  scopeAllClients
+                    ? "bg-white border-border text-text-secondary"
+                    : "bg-coral text-white border-coral"
+                }`}
+              >
+                {scopeAllClients
+                  ? `Ver todos los clientes (${clients.length})`
+                  : `Solo ${activeClient.brand}`}
+              </button>
+            )}
+            <Button onClick={loadAll} disabled={loading} variant="secondary">
+              <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+              Refrescar
+            </Button>
+          </div>
         </div>
 
         {/* Stats row */}

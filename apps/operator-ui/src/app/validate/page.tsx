@@ -51,14 +51,18 @@ export default function ValidatePage() {
 
   const latestSku = skus[0];
 
-  // Compute match score
-  const matches = selectedPb?.mappings?.map((m) => {
-    const written = latestSku?.data[normalizeFieldName(m.destination_field)]
-      ?? latestSku?.data[m.destination_field]
-      ?? null;
-    const expected = m.examples[0]?.destination_value ?? null;
-    return expected !== null && written !== null && written === expected;
-  }) ?? [];
+  // Compute match score — defensivo contra mappings sin examples/destination_field
+  const matches = (selectedPb?.mappings ?? [])
+    .filter((m) => m && typeof m.destination_field === "string")
+    .map((m) => {
+      const data = latestSku?.data ?? {};
+      const written =
+        data[normalizeFieldName(m.destination_field)] ??
+        data[m.destination_field] ??
+        null;
+      const expected = m.examples?.[0]?.destination_value ?? null;
+      return expected !== null && written !== null && written === expected;
+    });
   const matchCount = matches.filter(Boolean).length;
   const totalCount = matches.length;
   const accuracy = totalCount > 0 ? Math.round((matchCount / totalCount) * 100) : null;

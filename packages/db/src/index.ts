@@ -37,6 +37,14 @@ export {
   getStoreStatus,
 } from "./playbook-store";
 
+// Client store (multi-tenant — OXXO, Soriana, Costco, Abarrotes)
+export {
+  listClients,
+  saveClient,
+  getClient,
+  PRESEED_CLIENTS,
+} from "./client-store";
+
 // Executions store (historial de runs + self-healing events)
 export {
   saveExecution,

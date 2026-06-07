@@ -23,6 +23,7 @@ import { CostBreakdownCard } from "@/components/CostBreakdownCard";
 import { ConverseButton } from "@/components/ConverseButton";
 import { ConfidenceHeatmap } from "@/components/ConfidenceHeatmap";
 import { SelfCritiqueCard } from "@/components/SelfCritiqueCard";
+import { useActiveClient } from "@/hooks/useActiveClient";
 import { useVoice } from "@/hooks/useVoice";
 import {
   Square,
@@ -161,6 +162,7 @@ export default function TeachPage() {
   const [preloadRecall, setPreloadRecall] = useState(false);
   const recallSpokenRef = useRef<Set<string>>(new Set());
   const { speak, isPlaying, unlock } = useVoice();
+  const { activeClient, refresh: refreshClients } = useActiveClient();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inferRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -351,9 +353,31 @@ export default function TeachPage() {
         playbook: data.playbook,
         provenance: data.provenance,
       });
+
+      // Multi-tenant: si hay cliente activo, asociamos el playbook recién
+      // aprendido a su lista de playbooks. Best effort — no bloquea el éxito.
+      if (activeClient && data.playbook?.id) {
+        const updated = {
+          ...activeClient,
+          playbook_ids: Array.from(
+            new Set([...(activeClient.playbook_ids ?? []), data.playbook.id]),
+          ),
+        };
+        try {
+          await fetch("/api/clients", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updated),
+          });
+          await refreshClients();
+        } catch {
+          // silencioso — el playbook ya está guardado, la asociación es nice-to-have
+        }
+      }
+
       const mappingCount = data.playbook.mappings?.length ?? 0;
       void speak(
-        `Playbook listo con ${mappingCount} mapeos. ${data.provenance ? "Firmado en Solana." : ""}`,
+        `Playbook listo con ${mappingCount} mapeos para ${activeClient?.brand ?? "el cliente"}. ${data.provenance ? "Firmado en Solana." : ""}`,
         "triumphant",
       );
     } catch (err) {

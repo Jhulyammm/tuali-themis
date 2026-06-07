@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useEffect, useReducer } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StepLog } from "@/components/StepLog";
@@ -16,6 +16,7 @@ import { VoiceIndicator } from "@/components/VoiceIndicator";
 import { BrowserViewer } from "@/components/BrowserViewer";
 import { SolanaBadge } from "@/components/SolanaBadge";
 import { useVoice } from "@/hooks/useVoice";
+import { useActiveClient } from "@/hooks/useActiveClient";
 import {
   Sparkles,
   Loader2,
@@ -243,6 +244,7 @@ const DEMO_PLAYBOOK: Playbook = {
 export default function ExecutePage() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { speak, isPlaying, unlock } = useVoice();
+  const { activeClient } = useActiveClient();
 
   useEffect(() => {
     let cancelled = false;
@@ -332,6 +334,30 @@ export default function ExecutePage() {
   const isRunning =
     state.status === "starting" || state.status === "running";
 
+  // Multi-tenant: si hay cliente activo, mostramos solo SUS playbooks.
+  // El DEMO_PLAYBOOK siempre está disponible para cualquier cliente porque
+  // representa el flujo Arca→Tuali genérico (todos lo necesitan).
+  const playbooksForClient = useMemo(() => {
+    if (!activeClient) return state.playbooks;
+    const allowed = new Set(activeClient.playbook_ids ?? []);
+    return state.playbooks.filter(
+      (p) => p.id === DEMO_PLAYBOOK.id || allowed.has(p.id),
+    );
+  }, [state.playbooks, activeClient]);
+
+  // Si el playbook seleccionado no pertenece al cliente activo, auto-pick
+  // el primero del cliente actual.
+  useEffect(() => {
+    if (!activeClient) return;
+    if (
+      state.selectedPb &&
+      !playbooksForClient.some((p) => p.id === state.selectedPb?.id) &&
+      playbooksForClient.length > 0
+    ) {
+      dispatch({ type: "select_pb", playbook: playbooksForClient[0] });
+    }
+  }, [activeClient, playbooksForClient, state.selectedPb]);
+
   return (
     <div className="min-h-screen p-8 bg-bg-base">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -379,6 +405,19 @@ export default function ExecutePage() {
 
         {/* Playbook selector */}
         <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4 flex-wrap shadow-sm">
+          {activeClient && (
+            <div className="flex items-center gap-2 pr-3 border-r border-border">
+              <span className="text-xl">{activeClient.emoji}</span>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-text-tertiary font-mono">
+                  Cliente activo
+                </p>
+                <p className="text-sm font-semibold text-text-primary">
+                  {activeClient.brand}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <label className="text-xs text-text-tertiary uppercase font-mono tracking-widest">
               Playbook
@@ -389,17 +428,17 @@ export default function ExecutePage() {
                 dispatch({
                   type: "select_pb",
                   playbook:
-                    state.playbooks.find((p) => p.id === e.target.value) ??
+                    playbooksForClient.find((p) => p.id === e.target.value) ??
                     null,
                 })
               }
-              disabled={state.playbooks.length === 0 || isRunning}
+              disabled={playbooksForClient.length === 0 || isRunning}
               className="bg-bg-elevated border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-coral/30"
             >
-              {state.playbooks.length === 0 && (
-                <option>Correr /teach primero</option>
+              {playbooksForClient.length === 0 && (
+                <option>Aprende un playbook en /teach primero</option>
               )}
-              {state.playbooks.map((p) => (
+              {playbooksForClient.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>

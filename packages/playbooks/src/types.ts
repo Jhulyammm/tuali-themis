@@ -212,6 +212,44 @@ export interface Recording {
 }
 
 // ============================================================
+// Multi-tenant — Cliente / Tienda (la unidad de negocio Tuali)
+// ============================================================
+
+/**
+ * Cliente / tienda al que Themis le aprendió un proceso. La unidad de negocio.
+ *
+ * Tuali atiende miles de tiendas (OXXO, Soriana, Costco, abarrotes). Cada una
+ * tiene su catálogo de proveedor distinto y su instancia del ERP distinta.
+ * Themis le aprende a UNA, y después replica a las miles.
+ *
+ * El cliente acumula sus playbooks, sus stats, sus recomendaciones. La
+ * onboarding es "pegá la URL del catálogo" — Themis identifica la marca,
+ * crea el cliente y arranca a aprender.
+ */
+export interface Client {
+  id: string;
+  name: string;
+  brand: string; // "OXXO", "Soriana", "Costco", etc.
+  emoji: string; // identificador visual rápido
+  source_system_name: string; // "Catálogo Arca Continental"
+  source_system_url: string;
+  destination_system_name: string; // "ERP Tuali"
+  destination_system_url: string;
+  zone: ZoneContext;
+  /** IDs de playbooks aprendidos para este cliente */
+  playbook_ids: string[];
+  /** Último pedido enviado — base para recomendaciones */
+  baseline_skus: Record<string, number>;
+  status: "active" | "onboarding" | "paused";
+  onboarded_at: string;
+  onboarded_via: "url" | "manual" | "preseed";
+  /** Stats agregados (calculados desde executions) */
+  total_runs?: number;
+  avg_seconds?: number;
+  last_run_at?: string;
+}
+
+// ============================================================
 // Cognitive recommendations (Capa 3 — Gemini)
 // ============================================================
 

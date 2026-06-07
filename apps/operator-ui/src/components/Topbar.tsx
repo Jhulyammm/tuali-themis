@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { Bell, Search } from "lucide-react";
+import { ClientSelector } from "@/components/ClientSelector";
 
 const PAGE_NAMES: Record<string, string> = {
   "/": "Inicio",
@@ -14,6 +15,11 @@ const PAGE_NAMES: Record<string, string> = {
   "/produccion": "Producción",
   "/registro": "Registro",
   "/auto-reparacion": "Auto-reparación",
+  "/clients": "Clientes",
+  "/challenge": "Reto del jurado",
+  "/race": "Carrera",
+  "/comparativo": "Comparativo",
+  "/mcp": "MCP Server",
 };
 
 export function Topbar() {
@@ -31,8 +37,11 @@ export function Topbar() {
 
       {/* Right side */}
       <div className="flex items-center gap-3">
+        {/* Client selector — el shift de mindset multi-tenant */}
+        <ClientSelector />
+
         {/* Search (cosmetic) */}
-        <button className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-border text-xs text-text-tertiary hover:border-border-strong transition-colors">
+        <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-border text-xs text-text-tertiary hover:border-border-strong transition-colors">
           <Search className="w-3.5 h-3.5" />
           <span>Buscar...</span>
           <span className="font-mono bg-bg-elevated px-1 rounded text-[10px]">⌘K</span>
