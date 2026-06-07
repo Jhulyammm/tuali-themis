@@ -203,6 +203,10 @@ export default function TeachPage() {
   const [recall, setRecall] = useState<RecallSuggestion[] | null>(null);
   const [preloadRecall, setPreloadRecall] = useState(false);
   const recallSpokenRef = useRef<Set<string>>(new Set());
+  // Tracking de saturación: cuántas inferencias seguidas SIN mappings nuevos.
+  // Si llegamos a 4 seguidas, paramos automáticamente (Themis "saturó" la URL).
+  const drySinceRef = useRef(0);
+  const saturatedRef = useRef(false);
   const { speak, isPlaying, unlock } = useVoice();
   const { activeClient, refresh: refreshClients } = useActiveClient();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -305,7 +309,11 @@ export default function TeachPage() {
   // Función de inferencia live — referencia estable via useRef closure-safe
   const runInferenceTick = useCallback(async () => {
     if (state.kind !== "observing") return;
-    if (state.inferenceCount >= 8) return; // máximo 8 inferencias por observación
+    // Hard cap MUY ALTO para casos extremos (45 inferencias ≈ 3.75 min de
+    // observación). Cuesta ~$0.04 total — irrelevante para demo. El smart
+    // cap de saturación abajo es el que para de verdad.
+    if (state.inferenceCount >= 45) return;
+    if (saturatedRef.current) return;
 
     dispatch({
       type: "activity",
@@ -335,7 +343,6 @@ export default function TeachPage() {
       if (!res.ok) return;
       const data = (await res.json()) as { mappings?: Mapping[]; cached?: boolean };
       const incoming = data.mappings ?? [];
-      if (incoming.length === 0) return;
 
       // Mappings nuevos = los que no estaban antes
       const existingKeys = new Set(
@@ -344,6 +351,33 @@ export default function TeachPage() {
       const newOnes = incoming.filter(
         (m) => !existingKeys.has(`${m.source_field}->${m.destination_field}`),
       );
+
+      // Smart stop: si llevamos 4 inferencias seguidas SIN mappings nuevos,
+      // Themis saturó la URL. Paramos con voz honesta — no es bug, es que ya
+      // exprimió todo lo que el sitio ofrece.
+      if (newOnes.length === 0) {
+        drySinceRef.current++;
+        if (drySinceRef.current >= 4 && state.mappings.length >= 3) {
+          saturatedRef.current = true;
+          dispatch({
+            type: "activity",
+            event: {
+              id: `sat-${Date.now()}`,
+              timestamp_ms: Date.now(),
+              type: "system",
+              message: `Saturé la URL · ${state.mappings.length} mapeos extraídos. Detené cuando quieras.`,
+            },
+          });
+          void speak(
+            `Ya tengo todos los mapeos que el sitio ofrece. ${state.mappings.length} en total. Detené cuando quieras para firmar el playbook.`,
+            "neutral",
+          );
+        }
+        return;
+      }
+
+      // Hubo mappings nuevos — reset contador de saturación
+      drySinceRef.current = 0;
 
       // Update state con TODOS los mappings (no solo los nuevos)
       dispatch({ type: "mappings_inferred", mappings: incoming });
@@ -433,6 +467,8 @@ export default function TeachPage() {
   const handleStart = async () => {
     await unlock();
     announcedMappings.current.clear();
+    drySinceRef.current = 0;
+    saturatedRef.current = false;
     dispatch({ type: "start_create" });
 
     if (urlMode === "custom") {

@@ -44,7 +44,10 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// 90s: multi-fetch (5 paginas en paralelo ~3s) + Claude extract (~8s) +
+// Solana playbook (~2s) + signMappings paralelo (~5s) + Claude critique
+// (~6s) + saves (~1s). Total realista ~25-30s pero damos margen.
+export const maxDuration = 90;
 
 interface FinalizeBody {
   sessionId: string;
