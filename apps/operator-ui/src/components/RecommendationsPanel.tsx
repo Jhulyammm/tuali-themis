@@ -2,11 +2,21 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Check, X, TrendingUp, TrendingDown } from "lucide-react";
+import {
+  Sparkles,
+  Check,
+  X,
+  TrendingUp,
+  TrendingDown,
+  Snowflake,
+  Wrench,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatDelta } from "@/lib/utils";
 import type {
   CognitiveRecommendation,
+  ContextualInsight,
   RecommendationsResponse,
   ZoneContext,
   ContextualEvent,
@@ -77,6 +87,11 @@ export function RecommendationsPanel({
             </div>
           </AnimatePresence>
 
+          {/* Contextual insights — evaluación más allá de comprar producto */}
+          {response.contextual_insights?.length > 0 && (
+            <InsightsSection insights={response.contextual_insights} />
+          )}
+
           {/* Overall justification */}
           {response.overall_justification && (
             <div className="bg-bg-elevated border border-border rounded-xl p-4">
@@ -108,6 +123,92 @@ export function RecommendationsPanel({
         </>
       )}
     </motion.div>
+  );
+}
+
+/* ——— InsightsSection (evaluación contextual) ——— */
+
+const INSIGHT_STYLES: Record<
+  ContextualInsight["kind"],
+  { label: string; icon: typeof TrendingUp; cls: string }
+> = {
+  aumento: {
+    label: "Aumento",
+    icon: TrendingUp,
+    cls: "text-status-success bg-status-success-bg",
+  },
+  reduccion: {
+    label: "Reducción",
+    icon: TrendingDown,
+    cls: "text-status-error bg-red-50",
+  },
+  estacional: {
+    label: "Estacional",
+    icon: Snowflake,
+    cls: "text-blue-600 bg-blue-50",
+  },
+  operativo: {
+    label: "Operativo",
+    icon: Wrench,
+    cls: "text-text-secondary bg-bg-elevated",
+  },
+  riesgo: {
+    label: "Riesgo",
+    icon: AlertTriangle,
+    cls: "text-status-warning bg-status-warning-bg",
+  },
+};
+
+function InsightsSection({ insights }: { insights: ContextualInsight[] }) {
+  return (
+    <div className="space-y-3 pt-2">
+      <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-coral">
+        <Sparkles className="w-3.5 h-3.5" />
+        <span>Evaluación contextual</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {insights.map((ins, i) => {
+          const s = INSIGHT_STYLES[ins.kind] ?? INSIGHT_STYLES.operativo;
+          const Icon = s.icon;
+          return (
+            <motion.div
+              key={`${ins.title}-${i}`}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.06 }}
+              className="bg-white rounded-xl border border-border shadow-sm p-4 flex gap-3"
+            >
+              <div
+                className={cn(
+                  "flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center",
+                  s.cls,
+                )}
+              >
+                <Icon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-text-primary">
+                    {ins.title}
+                  </p>
+                  <span
+                    className={cn(
+                      "text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded",
+                      s.cls,
+                    )}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary leading-relaxed mt-1">
+                  {ins.detail}
+                </p>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -152,6 +253,11 @@ function RecommendationCard({
           <p className="mt-0.5 font-mono text-xs text-text-tertiary tabular-nums">
             {item.base_quantity} → {item.recommended_quantity} uds
           </p>
+          {item.driver && (
+            <p className="mt-1 text-[10px] text-coral font-mono truncate">
+              ▸ {item.driver}
+            </p>
+          )}
         </div>
 
         {/* Sparkline */}

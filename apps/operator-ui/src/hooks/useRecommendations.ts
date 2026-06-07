@@ -8,12 +8,19 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { RecommendationsResponse } from "@hack4her/playbooks";
+import type {
+  RecommendationsResponse,
+  ContextualEvent,
+  ZoneContext,
+} from "@hack4her/playbooks";
 
 interface FetchArgs {
   tendero_id: string;
-  zone_id: string;
+  zone?: ZoneContext;
+  zone_id?: string;
   historical_baseline: Record<string, number>;
+  upcoming_events?: ContextualEvent[];
+  seasonal_context?: string;
 }
 
 interface UseRecommendationsReturn {

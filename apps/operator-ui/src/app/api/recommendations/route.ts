@@ -74,8 +74,11 @@ export async function POST(request: NextRequest) {
 
   let body: {
     tendero_id?: unknown;
+    zone?: ZoneContext;
     zone_id?: unknown;
     historical_baseline?: unknown;
+    upcoming_events?: ContextualEvent[];
+    seasonal_context?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -86,9 +89,18 @@ export async function POST(request: NextRequest) {
   if (typeof body.tendero_id !== "string" || body.tendero_id.length > 64) {
     return badRequest("'tendero_id' inválido (string, max 64 chars)");
   }
-  if (typeof body.zone_id !== "string" || body.zone_id.length > 64) {
-    return badRequest("'zone_id' inválido (string, max 64 chars)");
+
+  // Ubicación de la sucursal: acepta una 'zone' completa (API/URL externa)
+  // o un 'zone_id' conocido del dataset.
+  const hasZone = !!body.zone && typeof body.zone === "object";
+  const hasZoneId =
+    typeof body.zone_id === "string" && body.zone_id.length <= 64;
+  if (!hasZone && !hasZoneId) {
+    return badRequest(
+      "Se requiere 'zone' (objeto) o 'zone_id' (string, max 64 chars)",
+    );
   }
+
   if (
     !body.historical_baseline ||
     typeof body.historical_baseline !== "object" ||
@@ -107,24 +119,41 @@ export async function POST(request: NextRequest) {
 
   try {
     const { eventos, zonas } = await loadDatasets();
-    const zone = zonas.zonas.find((z) => z.zone_id === body.zone_id);
+
+    let zone: ZoneContext | undefined = body.zone;
+    if (!zone && typeof body.zone_id === "string") {
+      zone = zonas.zonas.find((z) => z.zone_id === body.zone_id);
+    }
     if (!zone) {
-      return NextResponse.json({ error: "Zone not found" }, { status: 404 });
+      return badRequest(
+        "Se requiere 'zone' (ubicación de la sucursal) o un 'zone_id' conocido.",
+      );
     }
 
-    const allEvents: ContextualEvent[] = [
-      ...eventos.liga_mx_jornadas_2026,
-      ...eventos.fechas_universitarias_2026,
-      ...eventos.fechas_comerciales_2026,
-    ];
-
-    const upcoming = filterRelevantEvents(allEvents, body.zone_id, 30);
+    // Si el cliente ya generó eventos (vía Gemini en /api/events), úsalos como
+    // contexto para mantener consistencia con lo que se muestra en la UI.
+    // Si no, cae al dataset estático filtrado por relevancia.
+    let upcoming: ContextualEvent[];
+    if (body.upcoming_events && body.upcoming_events.length > 0) {
+      upcoming = body.upcoming_events;
+    } else {
+      const allEvents: ContextualEvent[] = [
+        ...eventos.liga_mx_jornadas_2026,
+        ...eventos.fechas_universitarias_2026,
+        ...eventos.fechas_comerciales_2026,
+      ];
+      upcoming = filterRelevantEvents(allEvents, zone.zone_id, 30);
+    }
 
     const context: RecommendationContext = {
       tendero_id: body.tendero_id,
       zone,
       upcoming_events: upcoming,
       historical_baseline: cleanBaseline,
+      seasonal_context:
+        typeof body.seasonal_context === "string"
+          ? body.seasonal_context
+          : undefined,
     };
 
     const result = await generateRecommendations(context);
