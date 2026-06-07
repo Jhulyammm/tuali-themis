@@ -178,7 +178,7 @@ export default function RacePage() {
           <Button
             onClick={handleStart}
             size="lg"
-            className="bg-coral hover:bg-coral-dark text-white"
+            className="bg-coral hover:bg-coral/90 text-white"
           >
             <Play className="w-4 h-4 mr-2" />
             Empezar carrera
@@ -312,7 +312,7 @@ function Track({
           </p>
         </div>
 
-        <div className="relative h-6 rounded-full bg-bg-subtle overflow-hidden">
+        <div className="relative h-6 rounded-full bg-bg-elevated overflow-hidden">
           <motion.div
             className={`absolute top-0 left-0 h-full ${bg}`}
             initial={{ width: 0 }}

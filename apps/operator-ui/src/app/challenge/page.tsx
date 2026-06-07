@@ -199,7 +199,7 @@ export default function ChallengePage() {
                   key={s}
                   type="button"
                   onClick={() => setUrl(s)}
-                  className="text-xs px-2 py-1 rounded bg-bg-subtle border border-border text-text-secondary hover:bg-coral/5 hover:border-coral/40 hover:text-coral transition-colors font-mono"
+                  className="text-xs px-2 py-1 rounded bg-bg-elevated border border-border text-text-secondary hover:bg-coral/5 hover:border-coral/40 hover:text-coral transition-colors font-mono"
                 >
                   {s.replace(/^https?:\/\//, "")}
                 </button>
@@ -210,7 +210,7 @@ export default function ChallengePage() {
               onClick={handleAccept}
               disabled={!url.trim()}
               size="lg"
-              className="w-full bg-coral hover:bg-coral-dark text-white font-semibold"
+              className="w-full bg-coral hover:bg-coral/90 text-white font-semibold"
             >
               <Play className="w-4 h-4 mr-2" />
               Aceptar reto

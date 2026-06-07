@@ -283,6 +283,31 @@ export default function TeachPage() {
     }
 
     try {
+      // Si la URL es de un dominio propio, embebemos el iframe directo y
+      // saltamos Browserbase. Más confiable, más barato, sin tocar cuota.
+      // El finalize hace fetch HTTP directo igual — Browserbase nunca fue la
+      // fuente de verdad. Esto solo bypassa la sesión visual.
+      if (isOwnDomain(effectiveUrl)) {
+        dispatch({
+          type: "session_ready",
+          sessionId: `local-${Date.now()}`,
+          debuggerUrl: effectiveUrl,
+        });
+        if (preloadRecall && recall && recall[0]) {
+          dispatch({ type: "mappings_inferred", mappings: recall[0].mappings });
+          void speak(
+            `Precargué ${recall[0].mapping_count} mapeos de memoria. Voy a refinarlos viendo lo que hagas.`,
+            "firm",
+          );
+        } else {
+          void speak(
+            "Listo. Empieza tu proceso. Yo voy infiriendo los mapeos en tiempo real.",
+            "curious",
+          );
+        }
+        return;
+      }
+
       const res = await fetch("/api/browser/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -71,7 +71,15 @@ export function ConfidenceHeatmap({ mappings }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 sm:grid-cols-16 md:grid-cols-20 gap-1.5 mb-4">
+        <div
+          className="grid gap-1.5 mb-4"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(
+              Math.max(mappings.length, 8),
+              20,
+            )}, minmax(0, 1fr))`,
+          }}
+        >
           {mappings.map((m, i) => (
             <motion.div
               key={`${m.source_field}-${m.destination_field}-${i}`}

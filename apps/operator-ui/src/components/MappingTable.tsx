@@ -77,7 +77,7 @@ export function MappingTable({ mappings, className }: MappingTableProps) {
                       href={m.signature.explorer_url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="inline-flex items-center gap-1 text-coral hover:text-coral-dark hover:underline"
+                      className="inline-flex items-center gap-1 text-coral hover:opacity-80 hover:underline"
                       title={`tx ${m.signature.tx_signature}`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-coral animate-pulse" />

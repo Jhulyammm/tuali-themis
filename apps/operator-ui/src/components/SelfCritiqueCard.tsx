@@ -31,7 +31,7 @@ export function SelfCritiqueCard({ critique }: Props) {
     grade === "A+" || (grade === "A" && critique.risks.length === 0);
 
   return (
-    <Card className="border-coral/30 bg-gradient-to-br from-bg-subtle via-white to-white">
+    <Card className="border-coral/30 bg-gradient-to-br from-bg-elevated via-white to-white">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="flex items-start gap-3">
