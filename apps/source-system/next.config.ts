@@ -4,15 +4,34 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "5mb" },
   },
-  // Cuando exponemos source-system vía túnel cloudflared, Next 15.5 alerta
-  // por cross-origin a /_next/*. Permitimos cualquier subdominio trycloudflare
-  // + el VULTR_HOST opcional para deploy en producción.
   allowedDevOrigins: [
     "*.trycloudflare.com",
     "*.ngrok-free.app",
     "*.ngrok.io",
-    ...(process.env.VULTR_HOST ? [process.env.VULTR_HOST] : []),
+    "*.vercel.app",
   ],
+  // Headers que permiten que el operator-ui embeba este sitio en un iframe.
+  // Sin esto, X-Frame-Options o Content-Security-Policy podrían bloquearlo.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // Permitir embed desde cualquier subdominio vercel.app (operator-ui)
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self' https://*.vercel.app http://localhost:*",
+          },
+          // Vercel a veces inyecta X-Frame-Options: DENY por default — overrideamos
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

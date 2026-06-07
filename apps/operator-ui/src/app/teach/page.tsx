@@ -511,6 +511,15 @@ export default function TeachPage() {
                 url={effectiveUrl}
                 status={viewerStatus}
                 debuggerUrl={debuggerUrl}
+                // Si estamos observando y la URL es nuestra (Vercel/localhost),
+                // embebemos directo. Esto evita el problema de Browserbase
+                // cerrando sesiones — para sitios nuestros el iframe directo
+                // siempre carga y es interactivo de verdad.
+                directEmbed={
+                  (state.kind === "observing" ||
+                    state.kind === "finalizing") &&
+                  isOwnDomain(effectiveUrl)
+                }
               />
             </CardContent>
           </Card>
@@ -641,6 +650,25 @@ function isValidPublicUrl(url: string): boolean {
     return (
       (u.protocol === "https:" || u.protocol === "http:") &&
       u.hostname.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detecta si la URL pertenece a un dominio que controlamos (Vercel, localhost).
+ * Si es nuestra, usamos iframe directo (más confiable). Si es externa,
+ * intentamos con Browserbase debugger.
+ */
+function isOwnDomain(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (
+      u.hostname.includes("vercel.app") ||
+      u.hostname === "localhost" ||
+      u.hostname.startsWith("127.0.0.1") ||
+      u.hostname.endsWith(".vercel.app")
     );
   } catch {
     return false;

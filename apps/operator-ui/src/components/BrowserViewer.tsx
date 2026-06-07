@@ -31,6 +31,13 @@ interface BrowserViewerProps {
   className?: string;
   /** URL del debugger Browserbase a embeber; sin él se muestra placeholder. */
   debuggerUrl?: string;
+  /**
+   * Si true, en vez de Browserbase debugger embebemos directamente la `url`
+   * en un iframe normal. Útil cuando la URL es nuestra (source-system,
+   * erp-destino) — bypassa el problema de Browserbase cerrando sesiones
+   * y le da al usuario un iframe interactivo confiable.
+   */
+  directEmbed?: boolean;
   /** Coordenadas del cursor autónomo si está ejecutando (overlay decorativo) */
   cursor?: { x: number; y: number } | null;
 }
@@ -40,6 +47,7 @@ export function BrowserViewer({
   status = "idle",
   className,
   debuggerUrl,
+  directEmbed,
   cursor,
 }: BrowserViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -121,8 +129,18 @@ export function BrowserViewer({
       </div>
 
       {/* Body */}
-      <div className="absolute inset-x-0 top-9 bottom-0 bg-black">
-        {debuggerUrl ? (
+      <div className="absolute inset-x-0 top-9 bottom-0 bg-white">
+        {directEmbed && url ? (
+          // Iframe DIRECTO al sitio — confiable, no depende de Browserbase
+          <iframe
+            ref={iframeRef}
+            src={url}
+            className="w-full h-full border-0 bg-white"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
+            allow="clipboard-write; clipboard-read; fullscreen"
+            title="Sistema A — iframe directo"
+          />
+        ) : debuggerUrl ? (
           <iframe
             ref={iframeRef}
             src={debuggerUrl}
