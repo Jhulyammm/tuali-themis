@@ -123,8 +123,22 @@ function hostnameOf(url: string): string {
   }
 }
 
+// TLDs compuestos comunes — necesitan 3 partes para el dominio raíz real.
+// Sin esta lista, `mercadolibre.com.mx` matchearía con `amazon.com.mx` por
+// compartir solo `com.mx` y daría falsos positivos en el recall.
+const COMPOUND_TLDS = new Set([
+  "com.mx", "com.ar", "com.br", "com.co", "com.pe", "com.ve",
+  "co.uk", "co.in", "co.jp", "co.kr",
+  "com.au", "net.au", "org.au",
+  "com.es", "es.com",
+]);
+
 function rootDomain(host: string): string {
   const parts = host.split(".");
   if (parts.length <= 2) return host;
-  return parts.slice(-2).join(".");
+  const lastTwo = parts.slice(-2).join(".");
+  if (COMPOUND_TLDS.has(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join(".");
+  }
+  return lastTwo;
 }

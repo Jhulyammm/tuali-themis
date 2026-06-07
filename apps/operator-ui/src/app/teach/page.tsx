@@ -288,48 +288,15 @@ export default function TeachPage() {
     }
 
     try {
-      // Si la URL es de un dominio propio, embebemos el iframe directo y
-      // saltamos Browserbase. Más confiable, más barato, sin tocar cuota.
-      // El finalize hace fetch HTTP directo igual — Browserbase nunca fue la
-      // fuente de verdad. Esto solo bypassa la sesión visual.
-      if (isOwnDomain(effectiveUrl)) {
-        dispatch({
-          type: "session_ready",
-          sessionId: `local-${Date.now()}`,
-          debuggerUrl: effectiveUrl,
-        });
-        if (preloadRecall && recall && recall[0]) {
-          dispatch({ type: "mappings_inferred", mappings: recall[0].mappings });
-          void speak(
-            `Precargué ${recall[0].mapping_count} mapeos de memoria. Voy a refinarlos viendo lo que hagas.`,
-            "firm",
-          );
-        } else {
-          void speak(
-            "Listo. Empieza tu proceso. Yo voy infiriendo los mapeos en tiempo real.",
-            "curious",
-          );
-        }
-        return;
-      }
-
-      const res = await fetch("/api/browser/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startUrl: effectiveUrl }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as {
-        sessionId: string;
-        debuggerUrl: string;
-      };
+      // BYPASS UNIVERSAL: Browserbase está fuera de cuota free. Igual nunca
+      // fue la fuente de verdad — el finalize hace fetch HTTP directo del HTML
+      // para extraer mappings. Browserbase solo era el visual del iframe.
+      // Para sitios externos con X-Frame-Options bloqueando embed, el iframe
+      // queda vacío pero todo el resto del flujo (extracción, voz, firmas) sí.
       dispatch({
         type: "session_ready",
-        sessionId: data.sessionId,
-        debuggerUrl: data.debuggerUrl,
+        sessionId: `local-${Date.now()}`,
+        debuggerUrl: effectiveUrl,
       });
       if (preloadRecall && recall && recall[0]) {
         dispatch({ type: "mappings_inferred", mappings: recall[0].mappings });
@@ -737,14 +704,12 @@ export default function TeachPage() {
                 url={effectiveUrl}
                 status={viewerStatus}
                 debuggerUrl={debuggerUrl}
-                // Si estamos observando y la URL es nuestra (Vercel/localhost),
-                // embebemos directo. Esto evita el problema de Browserbase
-                // cerrando sesiones — para sitios nuestros el iframe directo
-                // siempre carga y es interactivo de verdad.
+                // Siempre directEmbed durante observación — no usamos
+                // Browserbase. Sitios propios cargan; sitios externos con
+                // X-Frame-Options DENY mostrarán iframe vacío, pero el flujo
+                // (voz + extracción HTTP + firmas) sigue.
                 directEmbed={
-                  (state.kind === "observing" ||
-                    state.kind === "finalizing") &&
-                  isOwnDomain(effectiveUrl)
+                  state.kind === "observing" || state.kind === "finalizing"
                 }
               />
             </CardContent>
@@ -882,21 +847,3 @@ function isValidPublicUrl(url: string): boolean {
   }
 }
 
-/**
- * Detecta si la URL pertenece a un dominio que controlamos (Vercel, localhost).
- * Si es nuestra, usamos iframe directo (más confiable). Si es externa,
- * intentamos con Browserbase debugger.
- */
-function isOwnDomain(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return (
-      u.hostname.includes("vercel.app") ||
-      u.hostname === "localhost" ||
-      u.hostname.startsWith("127.0.0.1") ||
-      u.hostname.endsWith(".vercel.app")
-    );
-  } catch {
-    return false;
-  }
-}
