@@ -98,7 +98,7 @@ export default function ValidatePage() {
               </div>
               <p className="text-white text-lg font-semibold">Verificado en Solana ✓</p>
               <p className="text-white/50 text-xs font-mono mt-1 mb-4">
-                {selectedPb.provenance.tx_hash?.slice(0, 16)}...{selectedPb.provenance.tx_hash?.slice(-8)}
+                {selectedPb.provenance.tx_signature?.slice(0, 16)}...{selectedPb.provenance.tx_signature?.slice(-8)}
               </p>
               <SolanaBadge provenance={selectedPb.provenance} size="md" />
             </div>

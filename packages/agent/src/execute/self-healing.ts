@@ -95,7 +95,7 @@ Si no lo encuentras, found: false.`,
   // 3. Re-try la acción con el nuevo intent
   const newAction = rebuildActionWithIntent(step, parsed.new_intent, context);
   if (newAction) {
-    await stagehand.act({ action: newAction });
+    await stagehand.page.act(newAction);
   }
 
   return {

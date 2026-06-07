@@ -1,0 +1,42 @@
+# Dockerfile.operator-ui — corre el operator-ui (puerto 3000) en Vultr.
+#
+# Estrategia: Node 20 alpine, pnpm via corepack, multi-stage para que el
+# image final no incluya devDependencies del builder.
+#
+# IMPORTANTE: usamos `next dev` (no `next build`) porque el SSE de /api/execute
+# necesita streams sin buffer y Next prod build con compresión los rompe.
+# Es un demo, no producción real.
+
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat git
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /repo
+
+# Copiamos solo manifests primero para cachear deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/operator-ui/package.json ./apps/operator-ui/
+COPY apps/erp-destino/package.json ./apps/erp-destino/
+COPY apps/source-system/package.json ./apps/source-system/
+COPY packages/agent/package.json ./packages/agent/
+COPY packages/db/package.json ./packages/db/
+COPY packages/playbooks/package.json ./packages/playbooks/
+
+RUN pnpm install --frozen-lockfile
+
+# Stage runtime
+FROM node:20-alpine AS runner
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /repo
+
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/operator-ui/node_modules ./apps/operator-ui/node_modules
+COPY . .
+
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+EXPOSE 3000
+CMD ["pnpm", "--filter", "operator-ui", "exec", "next", "dev", "--port", "3000", "--hostname", "0.0.0.0"]

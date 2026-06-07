@@ -6,6 +6,8 @@
   "scripts": {
     "dev:operator": "pnpm --filter operator-ui dev",
     "dev:destino": "pnpm --filter erp-destino dev",
+    "dev:source": "pnpm --filter source-system dev",
+    "dev:all": "concurrently -n source,destino,operator -c green,blue,magenta \"pnpm dev:source\" \"pnpm dev:destino\" \"pnpm dev:operator\"",
     "env:sync": "node -e \"require('fs').copyFileSync('.env.local', 'apps/operator-ui/.env.local'); console.log('✓ .env.local copiado a operator-ui')\"",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
@@ -22,5 +24,9 @@
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "chromium-bidi": "^16.0.1",
+    "concurrently": "^9.0.0"
   }
 }

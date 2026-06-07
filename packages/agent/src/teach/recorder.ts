@@ -1,14 +1,14 @@
 /**
- * Themis — Recorder (Capa 1 · Modo Observación)
+ * Themis — Recorder (Capa 1 · DEPRECATED)
  *
- * Records what the operator does in one demonstration:
- *   - DOM events (clicks, fills, navigates) via MutationObserver + event listeners
- *   - Screenshots every N ms (saved to Supabase Storage)
- *   - Audio narration via Web Audio API → Whisper API for transcription
+ * El flujo actual de observación NO usa este recorder client-side. En su lugar
+ * usa packages/agent/src/browser/session-manager.ts: la observación ocurre
+ * server-side via Stagehand snapshots sobre la sesión Browserbase embebida.
+ * Razón: capturar DOM events desde dentro de un iframe cross-origin no es
+ * posible, mientras que Browserbase nos da acceso al page real desde el server.
  *
- * Output: a Recording object that the playbook-extractor turns into a Playbook.
- *
- * Owner: Jhulyam
+ * Se preserva este archivo por si en algún futuro se quiere narración + audio
+ * en el lado del operador (Whisper transcription sigue funcionando en /api/whisper).
  */
 
 import type {

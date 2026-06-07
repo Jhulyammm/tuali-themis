@@ -1,0 +1,60 @@
+# docker-compose.yml — Themis stack para Vultr Cloud Compute.
+#
+# 3 servicios Next.js corriendo simultáneamente:
+#   - source-system  (3002)  Sistema A — catálogo Distribuidora del Norte
+#   - erp-destino    (3001)  Sistema B — ERP Tuali
+#   - operator-ui    (3000)  UI de Themis
+#
+# Para arrancar en la VPS:
+#   docker compose up -d --build
+#
+# El .env.production se monta en operator-ui (donde viven las API keys).
+# Source y destino no necesitan secretos.
+
+services:
+  source-system:
+    build:
+      context: .
+      dockerfile: Dockerfile.source-system
+    container_name: themis-source
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  erp-destino:
+    build:
+      context: .
+      dockerfile: Dockerfile.erp-destino
+    container_name: themis-erp
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/captura"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  operator-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.operator-ui
+    container_name: themis-operator
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./.env.production
+    depends_on:
+      - source-system
+      - erp-destino
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -109,10 +109,20 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Confianza",
     items: [
       { label: "Verificación",     href: "/validate",         icon: IconVerificacion },
+      { label: "Comparativo",      href: "/comparativo",      icon: IconComparativo },
       { label: "Producción",       href: "/produccion",       icon: IconProduccion },
     ],
   },
 ];
+
+function IconComparativo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3v18h18" />
+      <path d="M7 14l4-4 4 4 5-5" />
+    </svg>
+  );
+}
 
 // ---------- Component ----------
 

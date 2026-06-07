@@ -19,6 +19,11 @@ import type {
   PlaybookAction,
 } from "@hack4her/playbooks";
 import { selfHealStep } from "./self-healing";
+import {
+  createSession,
+  closeSession,
+  getStagehand,
+} from "../browser/session-manager";
 
 // ============================================================
 // Public API
@@ -31,7 +36,19 @@ export interface ExecutorConfig {
   onStepUpdate?: (log: ExecutionLog) => void;
   /** Callback fired cuando hace self-healing */
   onSelfHealing?: (step: PlaybookAction) => void;
-  /** Headless mode (true en servidor, false para debug local) */
+  /**
+   * Si se pasa, reusa una sesión Browserbase ya creada por session-manager
+   * (en lugar de crear una nueva). Útil para que el jurado vea la MISMA
+   * ventana del browser donde primero observó y luego Themis ejecuta.
+   */
+  existingSessionId?: string;
+  /**
+   * Fires inmediatamente después de obtener el sessionId/debuggerUrl
+   * (sea recién creado o reusado). Permite que la UI muestre el iframe
+   * antes de que arranque la ejecución.
+   */
+  onSession?: (info: { sessionId: string; debuggerUrl?: string }) => void;
+  /** Headless mode (solo aplica si crea sesión nueva — Browserbase es siempre remoto) */
   headless?: boolean;
   /** Timeout total de la ejecución en ms; default 5 min */
   timeoutMs?: number;
@@ -51,23 +68,41 @@ export async function executePlaybook(
     started_at: new Date().toISOString(),
   };
 
-  const stagehand = new Stagehand({
-    env: "BROWSERBASE",
-    apiKey: process.env.BROWSERBASE_API_KEY,
-    projectId: process.env.BROWSERBASE_PROJECT_ID,
-    headless: config.headless ?? true,
-    modelName: "claude-3-5-sonnet-latest",
-    modelClientOptions: { apiKey: process.env.ANTHROPIC_API_KEY },
-  });
+  // Decide si reusamos sesión o creamos una nueva via el SessionManager
+  // (que se encarga de resolver el debuggerUrl iframe-able).
+  let stagehand: Stagehand;
+  let ownsSession = false;
+  let sessionId: string | undefined;
+  let debuggerUrl: string | undefined;
+
+  if (config.existingSessionId) {
+    const existing = getStagehand(config.existingSessionId);
+    if (!existing) {
+      throw new Error(
+        `existingSessionId "${config.existingSessionId}" not found in session pool`,
+      );
+    }
+    stagehand = existing;
+    sessionId = config.existingSessionId;
+  } else {
+    const handle = await createSession({ startUrl: playbook.source_url });
+    sessionId = handle.sessionId;
+    debuggerUrl = handle.debuggerUrl;
+    stagehand = getStagehand(sessionId)!;
+    ownsSession = true;
+  }
 
   try {
-    await stagehand.init();
+    if (sessionId) {
+      config.onSession?.({ sessionId, debuggerUrl });
+    }
 
     // Setup context for parameter substitution + extracted variables
     const context: Record<string, unknown> = { ...config.parameters };
 
-    // Switch al origen inicial
-    if (playbook.source_url) {
+    // Si reusamos sesión existente y queremos asegurar el source_url, navegar.
+    // (Si la creamos nosotros, createSession ya navegó.)
+    if (!ownsSession && playbook.source_url) {
       await stagehand.page.goto(playbook.source_url);
     }
 
@@ -100,7 +135,17 @@ export async function executePlaybook(
       timestamp: new Date().toISOString(),
     });
   } finally {
-    await stagehand.close();
+    // Solo cerramos si la creamos acá; sesiones prestadas las cierra quien las creó.
+    if (ownsSession && sessionId) {
+      try {
+        await closeSession(sessionId);
+      } catch (closeErr) {
+        console.warn(
+          "[executor] closeSession error:",
+          (closeErr as Error).message,
+        );
+      }
+    }
   }
 
   execution.ended_at = new Date().toISOString();
@@ -140,7 +185,7 @@ async function runStep(
         } else if (step.target === "source") {
           await stagehand.page.goto(
             process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL ??
-              "https://automationexercise.com",
+              "http://localhost:3002",
           );
         } else {
           await stagehand.page.goto(interpolate(step.target, context));
@@ -148,26 +193,22 @@ async function runStep(
         break;
 
       case "click":
-        await stagehand.act({
-          action: `click ${interpolate(step.selector_intent, context)}`,
-        });
+        await stagehand.page.act(
+          `click ${interpolate(step.selector_intent, context)}`,
+        );
         break;
 
       case "fill": {
         const intent = interpolate(step.selector_intent, context);
         const value = interpolate(step.value, context);
-        await stagehand.act({
-          action: `type "${value}" into ${intent}`,
-        });
+        await stagehand.page.act(`type "${value}" into ${intent}`);
         break;
       }
 
       case "select": {
         const intent = interpolate(step.selector_intent, context);
         const value = interpolate(step.value, context);
-        await stagehand.act({
-          action: `select "${value}" in ${intent}`,
-        });
+        await stagehand.page.act(`select "${value}" in ${intent}`);
         break;
       }
 
@@ -180,7 +221,7 @@ async function runStep(
 
       case "extract": {
         const intent = interpolate(step.selector_intent, context);
-        const result = await stagehand.extract({
+        const result = await stagehand.page.extract({
           instruction: `Extract: ${intent}`,
           schema: z.object({ value: z.string() }),
         });
@@ -193,7 +234,7 @@ async function runStep(
         const schemaShape = Object.fromEntries(
           step.fields.map((f) => [f.name, z.string()]),
         );
-        const result = await stagehand.extract({
+        const result = await stagehand.page.extract({
           instruction: `Extract list: ${intent}. Fields: ${step.fields.map((f) => f.name).join(", ")}`,
           schema: z.object({ items: z.array(z.object(schemaShape)) }),
         });
@@ -231,7 +272,17 @@ async function runStep(
       duration_ms: Date.now() - started,
     };
   } catch (err) {
-    // Self-healing fallback
+    // Self-healing aplica solo a acciones con selector_intent (click/fill/select/etc).
+    // navigate, switch_system, wait_for, for_each, if no son healables — fallan limpio.
+    if (!getSelectorIntent(step)) {
+      return {
+        ...baseLog,
+        status: "failed",
+        duration_ms: Date.now() - started,
+        error: (err as Error).message,
+      };
+    }
+
     config.onSelfHealing?.(step);
     try {
       const healing = await selfHealStep(stagehand, step, context);

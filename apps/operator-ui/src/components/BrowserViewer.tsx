@@ -1,14 +1,37 @@
+/**
+ * BrowserViewer — vista del navegador EN VIVO controlado por Browserbase.
+ *
+ * Cuando hay debuggerUrl, embebe el iframe del debugger de Browserbase: un
+ * browser real, interactivo, donde el operador puede hacer clic. Browserbase
+ * hospeda su propio dominio para el debugger (no afectado por X-Frame-Options
+ * del sitio destino), por eso es iframe-able sin tricks.
+ *
+ * Botones:
+ *   - "Pantalla completa"  → expande el iframe a fullscreen del display
+ *   - "Pop-up"             → abre el debugger en ventana nueva del SO (~1400x900)
+ *   - "Abrir"              → abre el sitio origen en una pestaña aparte
+ */
+
 "use client";
 
-import { useState, useEffect } from "react";
-import { ExternalLink, MousePointer2, Eye } from "lucide-react";
+import { useRef } from "react";
+import {
+  ExternalLink,
+  MousePointer2,
+  Power,
+  Loader2,
+  Maximize2,
+  ExternalLinkIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface BrowserViewerProps {
   url: string;
-  status?: "idle" | "observing" | "executing";
+  status?: "idle" | "creating" | "observing" | "executing";
   className?: string;
-  screenshotUrl?: string;
+  /** URL del debugger Browserbase a embeber; sin él se muestra placeholder. */
+  debuggerUrl?: string;
+  /** Coordenadas del cursor autónomo si está ejecutando (overlay decorativo) */
   cursor?: { x: number; y: number } | null;
 }
 
@@ -16,57 +39,100 @@ export function BrowserViewer({
   url,
   status = "idle",
   className,
-  screenshotUrl,
+  debuggerUrl,
   cursor,
 }: BrowserViewerProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const goFullscreen = () => {
+    const el = iframeRef.current;
+    if (!el) return;
+    if (el.requestFullscreen) {
+      void el.requestFullscreen();
+    }
+  };
+
+  const popOut = () => {
+    if (!debuggerUrl) return;
+    window.open(
+      debuggerUrl,
+      "browserbase-popout",
+      "width=1400,height=900,toolbar=no,menubar=no",
+    );
+  };
+
   return (
     <div
       className={cn(
-        "relative aspect-[4/3] bg-bg-elevated rounded-xl overflow-hidden border border-border",
-        status === "observing" && "ring-2 ring-status-warning ring-offset-1",
+        "relative bg-bg-elevated rounded-md overflow-hidden border border-default",
+        "h-[640px] min-h-[480px]",
         className,
       )}
     >
-      {/* Simulated browser chrome */}
-      <div className="absolute inset-x-0 top-0 px-3 py-2 bg-white border-b border-border flex items-center gap-2 z-10">
+      {/* URL bar simulada */}
+      <div className="absolute inset-x-0 top-0 px-3 py-2 bg-bg-surface border-b border-subtle flex items-center gap-2 z-10">
         <div className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-          <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-status-error/60" />
+          <span className="w-2.5 h-2.5 rounded-full bg-status-warning/60" />
+          <span className="w-2.5 h-2.5 rounded-full bg-status-success/60" />
         </div>
-        <div className="flex-1 px-3 py-1 bg-bg-elevated rounded-md text-xs font-mono text-text-tertiary truncate border border-border">
+        <div className="flex-1 px-3 py-1 bg-bg-base rounded text-xs font-mono text-text-tertiary truncate flex items-center gap-2">
+          {status !== "idle" && (
+            <span
+              className={cn(
+                "inline-block w-2 h-2 rounded-full",
+                status === "creating" && "bg-status-warning animate-pulse",
+                status === "observing" && "bg-coral animate-pulse",
+                status === "executing" && "bg-status-success animate-pulse",
+              )}
+            />
+          )}
           {url}
         </div>
+        {debuggerUrl && (
+          <>
+            <button
+              type="button"
+              onClick={goFullscreen}
+              className="text-xs text-text-secondary hover:text-coral inline-flex items-center gap-1 transition-colors"
+              title="Pantalla completa del iframe"
+            >
+              Pantalla completa <Maximize2 className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={popOut}
+              className="text-xs text-text-secondary hover:text-coral inline-flex items-center gap-1 transition-colors"
+              title="Abrir el navegador en ventana aparte"
+            >
+              Pop-up <ExternalLinkIcon className="w-3 h-3" />
+            </button>
+          </>
+        )}
         <a
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-text-secondary hover:text-coral inline-flex items-center gap-1 transition-colors flex-shrink-0"
+          className="text-xs text-text-secondary hover:text-coral inline-flex items-center gap-1 transition-colors"
+          title="Abrir el sitio origen en pestaña aparte"
         >
           Abrir <ExternalLink className="w-3 h-3" />
         </a>
       </div>
 
-      {/* Status badge when observing */}
-      {status === "observing" && (
-        <div className="absolute top-10 right-2 z-20 flex items-center gap-1.5 bg-status-warning-bg text-status-warning text-[10px] font-mono font-semibold px-2 py-1 rounded-full border border-status-warning/30">
-          <span className="w-1.5 h-1.5 rounded-full bg-status-warning animate-pulse" />
-          OBSERVANDO
-        </div>
-      )}
-
       {/* Body */}
-      <div className="absolute inset-x-0 top-9 bottom-0 overflow-hidden">
-        {screenshotUrl ? (
-          <img
-            src={screenshotUrl}
-            alt="Navegador"
-            className="max-w-full max-h-full object-contain"
+      <div className="absolute inset-x-0 top-9 bottom-0 bg-black">
+        {debuggerUrl ? (
+          <iframe
+            ref={iframeRef}
+            src={debuggerUrl}
+            className="w-full h-full border-0"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
+            allow="clipboard-write; clipboard-read; fullscreen"
+            title="Browserbase live session"
           />
-        ) : status === "observing" ? (
-          <LegacyERPMockup />
         ) : (
-          <Placeholder status={status} url={url} />
+          <EmptyState status={status} url={url} />
         )}
 
         {cursor && (
@@ -87,112 +153,38 @@ export function BrowserViewer({
   );
 }
 
-/* ——— Legacy ERP mockup — mostrado cuando status="observing" ——— */
-
-const LEGACY_FIELDS = [
-  { label: "Product Name", value: "Blue Top", id: "name" },
-  { label: "Price", value: "Rs. 500", id: "price" },
-  { label: "Brand", value: "H&M", id: "brand" },
-  { label: "Category", value: "Women > Tops", id: "category" },
-  { label: "Availability", value: "In Stock", id: "stock" },
-  { label: "Product Code", value: "EX-001-BT", id: "code" },
-];
-
-function LegacyERPMockup() {
-  const [activeIdx, setActiveIdx] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(
-      () => setActiveIdx((i) => (i + 1) % LEGACY_FIELDS.length),
-      1800,
-    );
-    return () => clearInterval(t);
-  }, []);
-
-  return (
-    <div
-      className="w-full h-full overflow-auto text-[11px]"
-      style={{ fontFamily: "Tahoma, Geneva, 'MS Sans Serif', sans-serif", background: "#fff" }}
-    >
-      {/* Legacy toolbar */}
-      <div style={{ background: "#ECE9D8", borderBottom: "1px solid #ACA899", padding: "3px 6px", display: "flex", gap: 4 }}>
-        {["File", "View", "Products", "Help"].map((m) => (
-          <span key={m} style={{ padding: "1px 6px", cursor: "default", color: "#000" }}>{m}</span>
-        ))}
-      </div>
-
-      {/* Page body */}
-      <div style={{ padding: "8px" }}>
-        {/* Section header */}
-        <div style={{ background: "#D4E3FA", border: "1px solid #7599C0", padding: "3px 6px", fontWeight: "bold", marginBottom: "6px", color: "#003366" }}>
-          Product Details — automationexercise.com
-        </div>
-
-        {/* Fields table */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <tbody>
-            {LEGACY_FIELDS.map((f, i) => (
-              <tr
-                key={f.id}
-                style={{
-                  background: i === activeIdx ? "#FEF6E0" : i % 2 === 0 ? "#F5F5F5" : "#fff",
-                  outline: i === activeIdx ? "1px solid #F5B301" : "1px solid transparent",
-                  transition: "background 0.25s",
-                }}
-              >
-                <td style={{ padding: "4px 8px", fontWeight: 600, color: "#333", width: "40%", borderRight: "1px solid #ddd" }}>
-                  {f.label}
-                </td>
-                <td style={{ padding: "4px 8px", color: i === activeIdx ? "#B45309" : "#111", fontWeight: i === activeIdx ? 600 : 400 }}>
-                  {f.value}
-                  {i === activeIdx && (
-                    <span style={{ marginLeft: 6, color: "#C8102E", fontSize: 10, fontWeight: 700 }}>
-                      ← Themis
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Status bar */}
-        <div style={{ marginTop: 8, padding: "3px 6px", background: "#ECE9D8", border: "1px solid #ACA899", color: "#444", display: "flex", justifyContent: "space-between" }}>
-          <span>Leyendo: {LEGACY_FIELDS[activeIdx].label}</span>
-          <span style={{ color: "#C8102E", fontWeight: 600 }}>● Themis observando</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ——— Placeholder estático (idle / executing) ——— */
-
-function Placeholder({
+function EmptyState({
   status,
   url,
 }: {
   status: BrowserViewerProps["status"];
   url: string;
 }) {
+  const isCreating = status === "creating";
+
   return (
-    <div className="text-center space-y-3 px-6 flex flex-col items-center justify-center h-full">
-      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-bg-elevated">
-        {status === "executing" ? (
-          <MousePointer2 className="w-5 h-5 text-coral animate-pulse" />
-        ) : (
-          <Eye className="w-5 h-5 text-text-tertiary" />
+    <div className="w-full h-full flex items-center justify-center bg-bg-elevated">
+      <div className="text-center space-y-3 px-6 max-w-sm">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-bg-overlay">
+          {isCreating ? (
+            <Loader2 className="w-6 h-6 text-coral animate-spin" />
+          ) : (
+            <Power className="w-6 h-6 text-text-tertiary" />
+          )}
+        </div>
+        <p className="text-sm font-medium text-text-primary">
+          {isCreating
+            ? "Iniciando navegador en Browserbase…"
+            : "Navegador listo para arrancar"}
+        </p>
+        <p className="text-xs text-text-tertiary font-mono break-all">{url}</p>
+        {!isCreating && (
+          <p className="text-xs text-text-tertiary">
+            Al iniciar, vas a ver un navegador real corriendo en Browserbase
+            (visible y manejable desde acá).
+          </p>
         )}
       </div>
-      <p className="text-sm text-text-secondary">
-        {status === "executing" ? "Themis controlando navegador" : "Listo para observar"}
-      </p>
-      <p className="text-xs text-text-tertiary font-mono break-all">{url}</p>
-      {status === "idle" && (
-        <p className="text-xs text-text-tertiary max-w-xs">
-          Haz clic en "Visual demo" para ver a Themis observando un proceso en tiempo real.
-        </p>
-      )}
     </div>
   );
 }

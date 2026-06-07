@@ -1,51 +1,138 @@
+/**
+ * /execute — Capa 1 ejecución REAL + Capa 2 voz + self-healing en vivo.
+ *
+ * Stream SSE desde /api/execute mientras Stagehand maneja un browser
+ * Browserbase real visible (iframe embebido). Telemetría se actualiza por cada
+ * step. El jurado ve a Themis trabajando sola en vivo.
+ */
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StepLog } from "@/components/StepLog";
 import { VoiceIndicator } from "@/components/VoiceIndicator";
+import { BrowserViewer } from "@/components/BrowserViewer";
 import { SolanaBadge } from "@/components/SolanaBadge";
 import { useVoice } from "@/hooks/useVoice";
-import { Play, Square, Sparkles, Zap, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { ExecutionLog, Playbook, Execution } from "@hack4her/playbooks";
+import {
+  Sparkles,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Zap,
+  AlertTriangle,
+  Play,
+} from "lucide-react";
+import type {
+  ExecutionLog,
+  Playbook,
+  Execution,
+} from "@hack4her/playbooks";
 
-const MOCK_LOGS: ExecutionLog[] = [
-  { step_index: 0, action: { action: "navigate", target: "/products" }, status: "succeeded", duration_ms: 1200, timestamp: new Date().toISOString() },
-  { step_index: 1, action: { action: "click", selector_intent: "primer producto en grilla" }, status: "succeeded", duration_ms: 480, timestamp: new Date().toISOString() },
-  { step_index: 2, action: { action: "extract", selector_intent: "nombre del producto", as: "product_name" }, status: "succeeded", duration_ms: 220, timestamp: new Date().toISOString() },
-  { step_index: 3, action: { action: "extract", selector_intent: "precio del producto", as: "price" }, status: "adapting", duration_ms: 0, timestamp: new Date().toISOString() },
-];
+// ============================================================
+// State
+// ============================================================
 
-const MOCK_LOG_ADAPTED: ExecutionLog = {
-  step_index: 3,
-  action: { action: "extract", selector_intent: "precio del producto", as: "price" },
-  status: "succeeded",
-  duration_ms: 3400,
-  adapted_from: "campo de precio",
-  adapted_to: "campo de precio (USD)",
-  timestamp: new Date().toISOString(),
+interface ExecState {
+  playbooks: Playbook[];
+  selectedPb: Playbook | null;
+  productId: string;
+  status: "idle" | "starting" | "running" | "succeeded" | "failed";
+  debuggerUrl: string | null;
+  sessionId: string | null;
+  logs: ExecutionLog[];
+  currentIndex: number | undefined;
+  execution: Execution | null;
+  error: string | null;
+}
+
+type ExecAction =
+  | { type: "set_playbooks"; playbooks: Playbook[] }
+  | { type: "select_pb"; playbook: Playbook | null }
+  | { type: "set_product_id"; value: string }
+  | { type: "start" }
+  | { type: "session_ready"; sessionId: string; debuggerUrl: string | null }
+  | { type: "step"; log: ExecutionLog }
+  | { type: "done"; execution: Execution }
+  | { type: "error"; message: string };
+
+const initialState: ExecState = {
+  playbooks: [],
+  selectedPb: null,
+  productId: "1",
+  status: "idle",
+  debuggerUrl: null,
+  sessionId: null,
+  logs: [],
+  currentIndex: undefined,
+  execution: null,
+  error: null,
 };
 
-const MOCK_REMAINING: ExecutionLog[] = [
-  { step_index: 4, action: { action: "switch_system", target: "destination" }, status: "succeeded", duration_ms: 600, timestamp: new Date().toISOString() },
-  { step_index: 5, action: { action: "fill", selector_intent: "denominación comercial", value: "{product_name}" }, status: "succeeded", duration_ms: 380, timestamp: new Date().toISOString() },
-  { step_index: 6, action: { action: "fill", selector_intent: "precio neto sin IVA", value: "{price/1.16}" }, status: "succeeded", duration_ms: 420, timestamp: new Date().toISOString() },
-  { step_index: 7, action: { action: "click", selector_intent: "botón guardar" }, status: "succeeded", duration_ms: 800, timestamp: new Date().toISOString() },
-];
+function reducer(state: ExecState, action: ExecAction): ExecState {
+  switch (action.type) {
+    case "set_playbooks":
+      return {
+        ...state,
+        playbooks: action.playbooks,
+        selectedPb: state.selectedPb ?? action.playbooks[0] ?? null,
+      };
+    case "select_pb":
+      return { ...state, selectedPb: action.playbook };
+    case "set_product_id":
+      return { ...state, productId: action.value };
+    case "start":
+      return {
+        ...state,
+        status: "starting",
+        debuggerUrl: null,
+        sessionId: null,
+        logs: [],
+        currentIndex: 0,
+        execution: null,
+        error: null,
+      };
+    case "session_ready":
+      return {
+        ...state,
+        status: "running",
+        sessionId: action.sessionId,
+        debuggerUrl: action.debuggerUrl,
+      };
+    case "step":
+      return {
+        ...state,
+        logs: [...state.logs, action.log],
+        currentIndex: action.log.step_index + 1,
+      };
+    case "done":
+      return {
+        ...state,
+        status:
+          action.execution.status === "succeeded" ? "succeeded" : "failed",
+        execution: action.execution,
+        currentIndex: undefined,
+      };
+    case "error":
+      return {
+        ...state,
+        status: "failed",
+        error: action.message,
+        currentIndex: undefined,
+      };
+  }
+}
+
+// ============================================================
+// Page
+// ============================================================
 
 export default function ExecutePage() {
-  const [executing, setExecuting] = useState(false);
-  const [logs, setLogs] = useState<ExecutionLog[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number | undefined>(undefined);
-  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
-  const [selectedPb, setSelectedPb] = useState<Playbook | null>(null);
-  const [realRunning, setRealRunning] = useState(false);
-  const [realExecution, setRealExecution] = useState<Execution | null>(null);
-  const [realError, setRealError] = useState<string | null>(null);
-  const [productId, setProductId] = useState("1");
-
-  const { speak, isPlaying } = useVoice();
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const { speak, isPlaying, unlock } = useVoice();
 
   useEffect(() => {
     let cancelled = false;
@@ -54,94 +141,107 @@ export default function ExecutePage() {
         const res = await fetch("/api/playbooks");
         if (!res.ok) return;
         const data = (await res.json()) as { playbooks: Playbook[] };
-        if (cancelled) return;
-        setPlaybooks(data.playbooks ?? []);
-        if (data.playbooks?.length > 0) setSelectedPb(data.playbooks[0]);
+        if (!cancelled) {
+          dispatch({ type: "set_playbooks", playbooks: data.playbooks ?? [] });
+        }
       } catch {
-        try {
-          const res = await fetch("/api/playbook/sample");
-          if (!res.ok) return;
-          const data = (await res.json()) as { playbook: Playbook };
-          if (!cancelled) setSelectedPb(data.playbook);
-        } catch { /* ignore */ }
+        // ignore
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const startVisualDemo = async () => {
-    setExecuting(true);
-    setLogs([]);
-    setCurrentIndex(0);
-    void speak("Iniciando ejecución autónoma. Voy a replicar el proceso con datos nuevos.");
-
-    for (let i = 0; i < MOCK_LOGS.length; i++) {
-      await sleep(800);
-      setCurrentIndex(i);
-      setLogs((prev) => [...prev, MOCK_LOGS[i]]);
+  const handleRun = async () => {
+    if (!state.selectedPb) {
+      dispatch({ type: "error", message: "Selecciona un playbook primero" });
+      return;
     }
+    await unlock();
+    dispatch({ type: "start" });
+    void speak(
+      "Arrancando ejecución. Voy a manejar el navegador yo solita ahora.",
+    );
 
-    await sleep(2500);
-    setLogs((prev) => [...prev.slice(0, -1), MOCK_LOG_ADAPTED]);
-    void speak("Detecté un cambio en el campo de precio. Resolviendo con visión.");
-
-    for (let i = 0; i < MOCK_REMAINING.length; i++) {
-      await sleep(700);
-      setCurrentIndex(MOCK_REMAINING[i].step_index);
-      setLogs((prev) => [...prev, MOCK_REMAINING[i]]);
-    }
-
-    void speak("Listo. Ejecución completada. Exactitud verificada.");
-    setExecuting(false);
-    setCurrentIndex(undefined);
-  };
-
-  const stopVisualDemo = () => {
-    setExecuting(false);
-    setCurrentIndex(undefined);
-  };
-
-  const runRealExecution = async () => {
-    if (!selectedPb) { setRealError("Selecciona un playbook primero"); return; }
-    setRealRunning(true);
-    setRealError(null);
-    setRealExecution(null);
-    setLogs([]);
-    setCurrentIndex(0);
-    void speak("Iniciando ejecución real con Stagehand. Esto puede tardar 30 a 60 segundos.");
     try {
       const res = await fetch("/api/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook: selectedPb, parameters: { product_id: productId }, headless: true }),
+        body: JSON.stringify({
+          playbook: state.selectedPb,
+          parameters: { product_id: state.productId },
+        }),
       });
-      if (!res.ok) {
-        const err = (await res.json()) as { error?: string };
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+      if (!res.ok || !res.body) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
       }
-      const data = (await res.json()) as { execution: Execution };
-      setRealExecution(data.execution);
-      setLogs(data.execution.logs);
-      void speak(data.execution.status === "succeeded" ? "Ejecución real completada." : "La ejecución terminó con errores.");
+      await consumeSSE(res.body, (event, data) => {
+        if (event === "session_ready") {
+          dispatch({
+            type: "session_ready",
+            sessionId: (data as { sessionId: string }).sessionId,
+            debuggerUrl: (data as { debuggerUrl?: string }).debuggerUrl ?? null,
+          });
+        } else if (event === "step_update") {
+          dispatch({ type: "step", log: data as ExecutionLog });
+        } else if (event === "self_healing") {
+          void speak("Detecté un cambio en la página. Adaptando con visión.");
+        } else if (event === "done") {
+          const exec = (data as { execution: Execution }).execution;
+          dispatch({ type: "done", execution: exec });
+          void speak(
+            exec.status === "succeeded"
+              ? "Ejecución completada. Datos transferidos al sistema destino."
+              : "La ejecución terminó con errores. Revisa el log.",
+          );
+        } else if (event === "error") {
+          dispatch({
+            type: "error",
+            message: (data as { message: string }).message,
+          });
+          void speak("La ejecución falló.");
+        }
+      });
     } catch (err) {
-      setRealError((err as Error).message);
-      void speak("La ejecución real falló");
-    } finally {
-      setRealRunning(false);
-      setCurrentIndex(undefined);
+      dispatch({ type: "error", message: (err as Error).message });
+      void speak("La ejecución falló.");
     }
   };
 
-  // Derived telemetry from logs
-  const succeeded = logs.filter((l) => l.status === "succeeded").length;
-  const adapted = logs.filter((l) => l.adapted_to).length;
-  const failed = logs.filter((l) => l.status === "failed").length;
-  const totalMs = logs.reduce((s, l) => s + (l.duration_ms ?? 0), 0);
+  // Derived telemetry
+  const succeeded = state.logs.filter((l) => l.status === "succeeded").length;
+  const adapted = state.logs.filter((l) => l.adapted_to).length;
+  const failed = state.logs.filter((l) => l.status === "failed").length;
+  const totalMs = state.logs.reduce(
+    (sum, l) => sum + (l.duration_ms ?? 0),
+    0,
+  );
+
+  const sourceUrl =
+    state.selectedPb?.source_url ??
+    process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL ??
+    "http://localhost:3002";
+
+  const destinationUrl =
+    state.selectedPb?.destination_url ??
+    process.env.NEXT_PUBLIC_ERP_DESTINO_URL ??
+    "http://localhost:3001";
+
+  const viewerStatus: "idle" | "creating" | "executing" =
+    state.status === "starting"
+      ? "creating"
+      : state.status === "running"
+        ? "executing"
+        : "idle";
+
+  const isRunning =
+    state.status === "starting" || state.status === "running";
 
   return (
     <div className="min-h-screen p-8 bg-bg-base">
       <div className="max-w-7xl mx-auto space-y-6">
-
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
@@ -152,27 +252,28 @@ export default function ExecutePage() {
               Themis ejecuta sola con datos nuevos
             </h1>
             <p className="text-sm text-text-secondary">
-              Replica el proceso aprendido. Se adapta si algo cambia (vision fallback ⚡).
+              Replica el proceso aprendido en un navegador real visible. Si algo
+              cambia en la página, se adapta con visión (self-healing ⚡).
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <VoiceIndicator active={isPlaying} source="agent" />
-            {executing ? (
-              <Button variant="destructive" onClick={stopVisualDemo}>
-                <Square className="w-4 h-4 mr-1.5" /> Detener
-              </Button>
-            ) : (
-              <Button variant="secondary" onClick={startVisualDemo}>
-                <Play className="w-4 h-4 mr-1.5" /> Visual demo
-              </Button>
-            )}
             <Button
-              onClick={runRealExecution}
-              disabled={realRunning || !selectedPb}
+              onClick={handleRun}
+              disabled={isRunning || !state.selectedPb}
               className="bg-[#C8102E] hover:bg-[#B40D28] text-white border-0"
             >
-              <Sparkles className="w-4 h-4 mr-1.5" />
-              {realRunning ? "Ejecutando..." : "Ejecutar REAL"}
+              {isRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Ejecutando…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-1.5" />
+                  Ejecutar playbook
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -180,134 +281,155 @@ export default function ExecutePage() {
         {/* Playbook selector */}
         <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4 flex-wrap shadow-sm">
           <div className="flex items-center gap-2">
-            <label className="text-xs text-text-tertiary uppercase font-mono tracking-widest">Playbook</label>
+            <label className="text-xs text-text-tertiary uppercase font-mono tracking-widest">
+              Playbook
+            </label>
             <select
-              value={selectedPb?.id ?? ""}
-              onChange={(e) => setSelectedPb(playbooks.find((p) => p.id === e.target.value) ?? null)}
-              disabled={playbooks.length === 0}
+              value={state.selectedPb?.id ?? ""}
+              onChange={(e) =>
+                dispatch({
+                  type: "select_pb",
+                  playbook:
+                    state.playbooks.find((p) => p.id === e.target.value) ??
+                    null,
+                })
+              }
+              disabled={state.playbooks.length === 0 || isRunning}
               className="bg-bg-elevated border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-coral/30"
             >
-              {playbooks.length === 0 && <option>Correr /teach primero</option>}
-              {playbooks.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {state.playbooks.length === 0 && (
+                <option>Correr /teach primero</option>
+              )}
+              {state.playbooks.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-text-tertiary uppercase font-mono tracking-widest">product_id</label>
+            <label className="text-xs text-text-tertiary uppercase font-mono tracking-widest">
+              product_id
+            </label>
             <input
               type="text"
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              className="bg-bg-elevated border border-border rounded-lg px-3 py-1.5 text-sm font-mono w-20 focus:outline-none focus:ring-2 focus:ring-coral/30"
+              value={state.productId}
+              onChange={(e) =>
+                dispatch({ type: "set_product_id", value: e.target.value })
+              }
+              disabled={isRunning}
+              className="bg-bg-elevated border border-border rounded-lg px-3 py-1.5 text-sm font-mono w-24 focus:outline-none focus:ring-2 focus:ring-coral/30"
             />
           </div>
-          {selectedPb?.provenance && (
-            <SolanaBadge provenance={selectedPb.provenance} size="sm" />
+          {state.selectedPb?.provenance && (
+            <SolanaBadge provenance={state.selectedPb.provenance} size="sm" />
           )}
         </div>
 
-        {/* Result cards */}
-        {realExecution && (
-          <div className={`rounded-xl border p-4 flex items-center justify-between ${
-            realExecution.status === "succeeded"
-              ? "border-status-success/40 bg-status-success-bg"
-              : "border-status-error/40 bg-red-50"
-          }`}>
-            <div>
-              <p className="text-sm font-semibold">Ejecución real: {realExecution.status}</p>
-              <p className="text-xs text-text-secondary font-mono mt-0.5">
-                {realExecution.logs.length} pasos · ID {realExecution.id.slice(0, 8)}
-              </p>
-            </div>
-            <CheckCircle2 className="w-6 h-6 text-status-success" />
-          </div>
-        )}
-
-        {realError && (
-          <div className="rounded-xl border border-status-error/40 bg-red-50 p-4">
-            <p className="text-sm font-semibold text-status-error">Error en ejecución real</p>
-            <p className="text-xs text-text-secondary font-mono mt-1 break-all">{realError}</p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* Telemetry + info — replaces the always-empty BrowserViewer */}
-          <div className="lg:col-span-2 space-y-4">
-
-            {/* Telemetry grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <TelemetryCard
-                icon={<CheckCircle2 className="w-5 h-5 text-status-success" />}
-                label="Pasos completados"
-                value={succeeded}
-                bg="bg-status-success-bg"
-              />
-              <TelemetryCard
-                icon={<Clock className="w-5 h-5 text-status-info" />}
-                label="Latencia total"
-                value={totalMs > 0 ? `${(totalMs / 1000).toFixed(1)}s` : "—"}
-                bg="bg-status-info-bg"
-              />
-              <TelemetryCard
-                icon={<Zap className="w-5 h-5 text-status-warning" />}
-                label="Auto-reparaciones ⚡"
-                value={adapted}
-                bg="bg-status-warning-bg"
-                highlight={adapted > 0}
-              />
-              <TelemetryCard
-                icon={<AlertTriangle className="w-5 h-5 text-status-error" />}
-                label="Errores"
-                value={failed}
-                bg={failed > 0 ? "bg-red-50" : "bg-bg-elevated"}
-              />
-            </div>
-
-            {/* Process context card */}
-            <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
-              <p className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary mb-3">Proceso en ejecución</p>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Sistema A</span>
-                  <span className="font-mono text-xs text-text-primary">automationexercise.com</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Sistema B</span>
-                  <span className="font-mono text-xs text-text-primary">erp-destino.local</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Playbook</span>
-                  <span className="font-mono text-xs text-text-primary truncate max-w-[160px]">
-                    {selectedPb?.name ?? "—"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Product ID</span>
-                  <span className="font-mono text-xs text-text-primary">{productId}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Self-healing explanation — shown when active */}
-            {(executing || adapted > 0) && (
-              <div className="bg-status-warning-bg border border-status-warning/30 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Zap className="w-4 h-4 text-status-warning" />
-                  <p className="text-sm font-semibold text-amber-800">Vision Fallback activo</p>
-                </div>
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  Cuando un selector CSS falla, Themis toma un screenshot y usa Computer Use
-                  de Claude para localizar el elemento visualmente. Nunca se rinde.
+        {/* Success / Failure cards */}
+        {state.status === "succeeded" && state.execution && (
+          <div className="rounded-xl border border-status-success/40 bg-status-success-bg p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="w-6 h-6 text-status-success" />
+              <div>
+                <p className="text-sm font-semibold">Ejecución completada</p>
+                <p className="text-xs text-text-secondary font-mono mt-0.5">
+                  {state.execution.logs.length} pasos · ID{" "}
+                  {state.execution.id.slice(0, 8)} ·{" "}
+                  {(totalMs / 1000).toFixed(1)}s
                 </p>
               </div>
-            )}
+            </div>
           </div>
+        )}
 
-          {/* Step Log */}
+        {state.status === "failed" && (
+          <div className="rounded-xl border border-status-error/40 bg-red-50 p-4 flex items-start gap-3">
+            <XCircle className="w-5 h-5 text-status-error shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-status-error">
+                Ejecución terminó con error
+              </p>
+              {state.error && (
+                <p className="text-xs text-text-secondary mt-1 font-mono break-all">
+                  {state.error}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Telemetry cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <TelemetryCard
+            icon={<CheckCircle2 className="w-5 h-5 text-status-success" />}
+            label="Pasos completados"
+            value={succeeded}
+            bg="bg-status-success-bg"
+          />
+          <TelemetryCard
+            icon={<Clock className="w-5 h-5 text-status-info" />}
+            label="Latencia total"
+            value={totalMs > 0 ? `${(totalMs / 1000).toFixed(1)}s` : "—"}
+            bg="bg-status-info-bg"
+          />
+          <TelemetryCard
+            icon={<Zap className="w-5 h-5 text-status-warning" />}
+            label="Auto-reparaciones ⚡"
+            value={adapted}
+            bg="bg-status-warning-bg"
+            highlight={adapted > 0}
+          />
+          <TelemetryCard
+            icon={<AlertTriangle className="w-5 h-5 text-status-error" />}
+            label="Errores"
+            value={failed}
+            bg={failed > 0 ? "bg-red-50" : "bg-bg-elevated"}
+          />
+        </div>
+
+        {/* Browser viewer + StepLog side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 bg-white">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b border-border">
+              <p className="text-sm font-semibold">Navegador autónomo (live)</p>
+              <span
+                className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-full ${
+                  state.status === "running"
+                    ? "bg-status-warning-bg text-status-warning"
+                    : state.status === "succeeded"
+                      ? "bg-status-success-bg text-status-success"
+                      : state.status === "failed"
+                        ? "bg-red-50 text-status-error"
+                        : "bg-bg-elevated text-text-tertiary"
+                }`}
+              >
+                {state.status === "starting"
+                  ? "Iniciando…"
+                  : state.status === "running"
+                    ? "● Ejecutando"
+                    : state.status === "succeeded"
+                      ? "✓ Completo"
+                      : state.status === "failed"
+                        ? "✗ Falló"
+                        : "Inactivo"}
+              </span>
+            </CardHeader>
+            <CardContent className="p-4">
+              <BrowserViewer
+                url={sourceUrl}
+                status={viewerStatus}
+                debuggerUrl={state.debuggerUrl ?? undefined}
+              />
+            </CardContent>
+          </Card>
+
           <Card className="bg-white">
             <CardHeader className="pb-3 border-b border-border">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold">Pasos</p>
+                <p className="text-sm font-semibold">
+                  Pasos — {state.logs.length}
+                </p>
                 {adapted > 0 && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-status-warning bg-status-warning-bg px-2 py-0.5 rounded-full border border-status-warning/30">
                     <Zap className="w-2.5 h-2.5" />
@@ -317,14 +439,62 @@ export default function ExecutePage() {
               </div>
             </CardHeader>
             <CardContent className="p-3">
-              <StepLog logs={logs} currentIndex={currentIndex} />
+              {state.status === "idle" ? (
+                <div className="text-center py-12 px-4">
+                  <Play className="w-6 h-6 mx-auto text-text-tertiary" />
+                  <p className="text-sm text-text-secondary mt-3">
+                    Selecciona un playbook y apretá &ldquo;Ejecutar&rdquo;
+                  </p>
+                </div>
+              ) : (
+                <StepLog
+                  logs={state.logs}
+                  currentIndex={state.currentIndex}
+                />
+              )}
             </CardContent>
           </Card>
+        </div>
+
+        {/* Self-healing explanation */}
+        {(state.status === "running" || adapted > 0) && (
+          <div className="bg-status-warning-bg border border-status-warning/30 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Zap className="w-4 h-4 text-status-warning" />
+              <p className="text-sm font-semibold text-amber-800">
+                Vision Fallback activo
+              </p>
+            </div>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              Cuando un selector falla, Themis toma un screenshot y usa Claude
+              Vision para localizar el elemento por semántica. Nunca se rinde.
+            </p>
+          </div>
+        )}
+
+        {/* Process context */}
+        <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-text-tertiary mb-3">
+            Proceso en ejecución
+          </p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+            <ContextRow label="Sistema A" value={shortUrl(sourceUrl)} />
+            <ContextRow label="Sistema B" value={shortUrl(destinationUrl)} />
+            <ContextRow
+              label="Playbook"
+              value={state.selectedPb?.name ?? "—"}
+            />
+            <ContextRow label="product_id" value={state.productId} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+// ============================================================
+// Subcomponents
+// ============================================================
 
 function TelemetryCard({
   icon,
@@ -342,7 +512,9 @@ function TelemetryCard({
   return (
     <div className={`${bg} rounded-xl p-4 border border-border`}>
       <div className="flex items-center gap-2 mb-2">{icon}</div>
-      <p className={`text-2xl font-bold tabular-nums ${highlight ? "text-status-warning" : "text-text-primary"}`}>
+      <p
+        className={`text-2xl font-bold tabular-nums ${highlight ? "text-status-warning" : "text-text-primary"}`}
+      >
         {value}
       </p>
       <p className="text-xs text-text-secondary mt-0.5">{label}</p>
@@ -350,6 +522,67 @@ function TelemetryCard({
   );
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function ContextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-widest text-text-tertiary font-mono">
+        {label}
+      </p>
+      <p className="text-xs font-mono text-text-primary truncate mt-0.5" title={value}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+// ============================================================
+// SSE consumer
+// ============================================================
+
+async function consumeSSE(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: string, data: unknown) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep = buffer.indexOf("\n\n");
+    while (sep !== -1) {
+      const chunk = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      sep = buffer.indexOf("\n\n");
+      const lines = chunk.split("\n");
+      let eventName = "message";
+      let dataStr = "";
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataStr += line.slice(5).trim();
+        }
+      }
+      if (!dataStr) continue;
+      try {
+        const parsed = JSON.parse(dataStr) as unknown;
+        onEvent(eventName, parsed);
+      } catch {
+        // ignore malformed chunk
+      }
+    }
+  }
+}
+
+function shortUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.host + (u.pathname !== "/" ? u.pathname : "");
+  } catch {
+    return url;
+  }
 }

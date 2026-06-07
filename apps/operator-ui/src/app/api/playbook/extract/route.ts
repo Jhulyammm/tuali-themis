@@ -2,7 +2,10 @@
  * /api/playbook/extract — toma un Recording, lo manda a Claude,
  * devuelve un Playbook estructurado + lo registra en Solana (Capa 6).
  *
- * Imports directos para evitar cargar Stagehand.
+ * Seguridad:
+ *  - body cap (Recording → tokens Claude; LLM cost)
+ *  - rate limit per-IP (claude billing)
+ *  - sanitized errors
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,15 +13,49 @@ import { extractPlaybookFromRecording } from "@hack4her/agent/playbook";
 import { createSolanaClientFromEnv } from "@hack4her/agent/blockchain";
 import { saveSavedPlaybook } from "@hack4her/db";
 import type { Recording } from "@hack4her/playbooks";
+import {
+  LIMITS,
+  jsonTooBig,
+  rateLimit,
+  getClientIp,
+  badRequest,
+  tooLarge,
+  tooManyRequests,
+  sanitizedError,
+} from "@/lib/security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
-  try {
-    const recording = (await request.json()) as Recording;
+  const ip = getClientIp(request);
+  if (!rateLimit(`extract:${ip}`, 10, 60_000)) {
+    return tooManyRequests("Demasiadas extracciones. Esperá 1 minuto.");
+  }
 
+  let raw: string;
+  try {
+    raw = await request.text();
+  } catch {
+    return badRequest("Failed to read body");
+  }
+
+  const sizeCheck = jsonTooBig(raw, LIMITS.recording_json_bytes);
+  if (sizeCheck.tooBig) {
+    return tooLarge(
+      `Recording max ${LIMITS.recording_json_bytes} bytes (got ${sizeCheck.size})`,
+    );
+  }
+
+  let recording: Recording;
+  try {
+    recording = JSON.parse(raw) as Recording;
+  } catch {
+    return badRequest("Invalid Recording JSON");
+  }
+
+  try {
     // Capa 1: Claude extrae el Playbook con selector_intent naturales
     const playbook = await extractPlaybookFromRecording(recording);
 
@@ -49,7 +86,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("[/api/playbook/extract]", err);
     return NextResponse.json(
-      { error: (err as Error).message || "Extraction failed" },
+      sanitizedError(err, "Extraction failed"),
       { status: 500 },
     );
   }

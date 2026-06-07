@@ -31,7 +31,7 @@ async function runDiagnostics(): Promise<CheckResult[]> {
     required_env: ["ANTHROPIC_API_KEY"],
     status: hasAnthropic ? "live" : "mock",
     detail: hasAnthropic
-      ? `Key configurada (${process.env.ANTHROPIC_API_KEY?.slice(0, 12)}...). Listo para extraer playbooks de recordings.`
+      ? "Key configurada. Listo para extraer playbooks de recordings."
       : "Falta ANTHROPIC_API_KEY. Sin esto, el agente no puede aprender.",
   });
 
@@ -44,7 +44,7 @@ async function runDiagnostics(): Promise<CheckResult[]> {
     required_env: ["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"],
     status: hasBrowserbase ? "live" : "mock",
     detail: hasBrowserbase
-      ? `Configurado. Project: ${process.env.BROWSERBASE_PROJECT_ID?.slice(0, 8)}...`
+      ? "Configurado. Browserbase + Stagehand listos."
       : "Sin keys, /execute solo muestra el mock animado. No hay browser real.",
   });
 
@@ -56,7 +56,7 @@ async function runDiagnostics(): Promise<CheckResult[]> {
     required_env: ["ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID (opcional)"],
     status: hasElevenLabs ? "live" : "mock",
     detail: hasElevenLabs
-      ? `Key configurada. Voice ID: ${process.env.ELEVENLABS_VOICE_ID ?? "default (EXAVITQu4vr4xnSDxMaL)"}.`
+      ? "Key configurada. Voice ID por env (default si no se especifica)."
       : "Sin key, /api/voice tira 500. UI muestra waveform pero sin audio real.",
   });
 

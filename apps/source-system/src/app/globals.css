@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * Source System — Portal de proveedor CPG.
+ * Look intencional: blanco + verde corporativo mexicano, denso.
+ * NO premium. NO Tailwind UI. Mimickea SAP/Oracle distributor portal real.
+ * ============================================================ */
+
+@layer base {
+  html {
+    font-size: 14px;
+  }
+
+  body {
+    background: #ffffff;
+    color: #1a1a1a;
+    font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid #dcdcd0;
+    font-size: 13px;
+  }
+
+  th {
+    background: #e8f3ec;
+    color: #1e6b3a;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  tr:hover td {
+    background: #f7f7f5;
+  }
+
+  input,
+  select,
+  textarea {
+    border: 1px solid #cccccc;
+    background: #ffffff;
+    padding: 4px 6px;
+    font-size: 13px;
+    color: #222;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid #1e6b3a;
+    outline-offset: -1px;
+    border-color: #1e6b3a;
+  }
+
+  label {
+    font-size: 11px;
+    color: #555;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}

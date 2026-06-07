@@ -17,6 +17,13 @@ import type {
   RecommendationContext,
   ZoneContext,
 } from "@hack4her/playbooks";
+import {
+  rateLimit,
+  getClientIp,
+  badRequest,
+  tooManyRequests,
+  sanitizedError,
+} from "@/lib/security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,13 +67,45 @@ async function loadDatasets() {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = (await request.json()) as {
-      tendero_id: string;
-      zone_id: string;
-      historical_baseline: Record<string, number>;
-    };
+  const ip = getClientIp(request);
+  if (!rateLimit(`recommend:${ip}`, 20, 60_000)) {
+    return tooManyRequests("Demasiadas recomendaciones. Esperá 1 minuto.");
+  }
 
+  let body: {
+    tendero_id?: unknown;
+    zone_id?: unknown;
+    historical_baseline?: unknown;
+  };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
+
+  if (typeof body.tendero_id !== "string" || body.tendero_id.length > 64) {
+    return badRequest("'tendero_id' inválido (string, max 64 chars)");
+  }
+  if (typeof body.zone_id !== "string" || body.zone_id.length > 64) {
+    return badRequest("'zone_id' inválido (string, max 64 chars)");
+  }
+  if (
+    !body.historical_baseline ||
+    typeof body.historical_baseline !== "object" ||
+    Array.isArray(body.historical_baseline)
+  ) {
+    return badRequest("'historical_baseline' debe ser objeto");
+  }
+  const baseline = body.historical_baseline as Record<string, unknown>;
+  if (Object.keys(baseline).length > 100) {
+    return badRequest("'historical_baseline' max 100 SKUs");
+  }
+  const cleanBaseline: Record<string, number> = {};
+  for (const [k, v] of Object.entries(baseline)) {
+    if (typeof v === "number" && isFinite(v)) cleanBaseline[k] = v;
+  }
+
+  try {
     const { eventos, zonas } = await loadDatasets();
     const zone = zonas.zonas.find((z) => z.zone_id === body.zone_id);
     if (!zone) {
@@ -85,7 +124,7 @@ export async function POST(request: NextRequest) {
       tendero_id: body.tendero_id,
       zone,
       upcoming_events: upcoming,
-      historical_baseline: body.historical_baseline,
+      historical_baseline: cleanBaseline,
     };
 
     const result = await generateRecommendations(context);
@@ -93,7 +132,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("[/api/recommendations]", err);
     return NextResponse.json(
-      { error: (err as Error).message || "Recommendation failed" },
+      sanitizedError(err, "Recommendation failed"),
       { status: 500 },
     );
   }

@@ -1,18 +1,17 @@
 /**
- * /teach — Capa 1 + Capa 2 + Capa 6 demo page.
+ * /teach — Capa 1 + Capa 2 + Capa 6: observación REAL en vivo con
+ * INFERENCIA DE MAPPINGS EN TIEMPO REAL.
  *
- * Dos modos:
- *   - Visual (mock): el operador ve la tabla creciendo animada para el pitch
- *   - Real (live): click un botón, mandamos una Recording sintética al backend,
- *     Claude la convierte en Playbook real, Solana lo firma, MongoDB lo guarda.
- *     PRUEBA del criterio 1 de la rúbrica (Aprendizaje por observación).
- *
- * Marita: pule visuales siguiendo mockup #2. NO toques la lógica de useState/handlers.
+ * Diferencias vs versión anterior:
+ *  - Toggle "Sistema sugerido" vs "Mi URL" → demo con cualquier sitio
+ *  - Mientras observás, Claude infiere mappings cada 4s y los muestra en vivo
+ *  - Voz narra cada nuevo mapping detectado ("Encontré que Producto es Denominación...")
+ *  - El jurado nunca ve una pausa muerta — la tabla crece sola
  */
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,216 +20,320 @@ import { VoiceIndicator } from "@/components/VoiceIndicator";
 import { BrowserViewer } from "@/components/BrowserViewer";
 import { SolanaBadge } from "@/components/SolanaBadge";
 import { useVoice } from "@/hooks/useVoice";
-import { Circle, Square, Sparkles } from "lucide-react";
-import type { Mapping, Playbook, SolanaProvenance } from "@hack4her/playbooks";
+import {
+  Square,
+  Loader2,
+  Play,
+  Power,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  Globe,
+  Link as LinkIcon,
+} from "lucide-react";
+import type {
+  Mapping,
+  Playbook,
+  SolanaProvenance,
+} from "@hack4her/playbooks";
 
-const SOURCE_URL = "https://automationexercise.com/products";
+const SUGGESTED_URL =
+  process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL ?? "http://localhost:3002";
 
-// Visual demo data — para el pitch
-const MOCK_MAPPINGS_PROGRESSIVE: Mapping[] = [
-  {
-    source_field: "Product Name",
-    source_selector_intent: "campo del nombre del producto en vista detalle",
-    destination_field: "Denominación comercial",
-    destination_selector_intent: "campo de denominación",
-    confidence: 0.97,
-    examples: [{ source_value: "Blue Top", destination_value: "Blue Top" }],
-  },
-  {
-    source_field: "Price",
-    source_selector_intent: "campo del precio del producto",
-    destination_field: "Precio neto sin IVA",
-    destination_selector_intent: "campo de precio neto",
-    confidence: 0.92,
-    transformation: "Sin símbolo de moneda, dividir entre 1.16",
-    examples: [{ source_value: "$500", destination_value: "431.03" }],
-  },
-  {
-    source_field: "Brand",
-    source_selector_intent: "campo de la marca del producto",
-    destination_field: "Fabricante",
-    destination_selector_intent: "campo del fabricante",
-    confidence: 0.89,
-    examples: [{ source_value: "H&M", destination_value: "H&M" }],
-  },
-  {
-    source_field: "Category",
-    source_selector_intent: "categoría del producto en breadcrumb",
-    destination_field: "Rubro contable",
-    destination_selector_intent: "select de rubro contable",
-    confidence: 0.85,
-    examples: [{ source_value: "Women > Tops", destination_value: "Textiles" }],
-  },
-];
+interface ObservedSnapshot {
+  taken_at: string;
+  url: string;
+  title: string;
+  observations: string[];
+  field_values: Record<string, string>;
+}
 
-// Recording sintético — representa una observación real del flujo
-const SYNTHETIC_RECORDING = {
-  id: crypto.randomUUID(),
-  source_url: "https://automationexercise.com/product_details/1",
-  destination_url: "http://localhost:3001/captura",
-  duration_ms: 18000,
-  audio_transcript:
-    "Voy a capturar un producto del catálogo de automationexercise al ERP de Tuali. Primero leo el nombre del producto, la marca, el precio y la categoría. Después en el ERP capturo denominación comercial con el nombre, fabricante con la marca, precio neto sin IVA con el precio dividido entre 1.16, y rubro contable basado en la categoría.",
-  events: [
-    {
-      timestamp_ms: 100,
-      type: "dom_event",
-      data: { kind: "navigate", url: "https://automationexercise.com/product_details/1" },
-    },
-    {
-      timestamp_ms: 2300,
-      type: "narration",
-      data: "Leyendo nombre del producto: Blue Top",
-    },
-    {
-      timestamp_ms: 4100,
-      type: "narration",
-      data: "Marca: H&M",
-    },
-    {
-      timestamp_ms: 5800,
-      type: "narration",
-      data: "Precio: Rs. 500",
-    },
-    {
-      timestamp_ms: 7200,
-      type: "narration",
-      data: "Categoría: Women > Tops",
-    },
-    {
-      timestamp_ms: 8400,
-      type: "dom_event",
-      data: { kind: "navigate", url: "http://localhost:3001/captura" },
-    },
-    {
-      timestamp_ms: 10100,
-      type: "dom_event",
-      data: {
-        kind: "fill",
-        testid: "denominacion-input",
-        value: "Blue Top",
-      },
-    },
-    {
-      timestamp_ms: 12400,
-      type: "dom_event",
-      data: { kind: "fill", testid: "fabricante-input", value: "H&M" },
-    },
-    {
-      timestamp_ms: 14700,
-      type: "dom_event",
-      data: {
-        kind: "fill",
-        testid: "precio-neto-input",
-        value: "431.03",
-      },
-    },
-    {
-      timestamp_ms: 16100,
-      type: "dom_event",
-      data: { kind: "click", testid: "guardar-button" },
-    },
-  ],
-  created_at: new Date().toISOString(),
-};
+type Phase =
+  | { kind: "idle" }
+  | { kind: "creating" }
+  | {
+      kind: "observing";
+      sessionId: string;
+      debuggerUrl: string;
+      snapshots: ObservedSnapshot[];
+      mappings: Mapping[];
+      elapsedSec: number;
+    }
+  | {
+      kind: "finalizing";
+      sessionId: string;
+      debuggerUrl: string;
+      snapshots: ObservedSnapshot[];
+      mappings: Mapping[];
+    }
+  | { kind: "success"; playbook: Playbook; provenance: SolanaProvenance | null }
+  | { kind: "error"; message: string };
+
+type Action =
+  | { type: "start_create" }
+  | { type: "session_ready"; sessionId: string; debuggerUrl: string }
+  | { type: "snapshot"; snap: ObservedSnapshot }
+  | { type: "mappings_inferred"; mappings: Mapping[] }
+  | { type: "tick" }
+  | { type: "start_finalize" }
+  | { type: "success"; playbook: Playbook; provenance: SolanaProvenance | null }
+  | { type: "error"; message: string }
+  | { type: "reset" };
+
+function reducer(state: Phase, action: Action): Phase {
+  switch (action.type) {
+    case "start_create":
+      return { kind: "creating" };
+    case "session_ready":
+      return {
+        kind: "observing",
+        sessionId: action.sessionId,
+        debuggerUrl: action.debuggerUrl,
+        snapshots: [],
+        mappings: [],
+        elapsedSec: 0,
+      };
+    case "snapshot": {
+      if (state.kind !== "observing") return state;
+      const isNew =
+        state.snapshots.length === 0 ||
+        state.snapshots[state.snapshots.length - 1].url !== action.snap.url;
+      const merged = isNew
+        ? [...state.snapshots, action.snap]
+        : [...state.snapshots.slice(0, -1), action.snap];
+      return { ...state, snapshots: merged };
+    }
+    case "mappings_inferred": {
+      if (state.kind !== "observing") return state;
+      return { ...state, mappings: action.mappings };
+    }
+    case "tick":
+      if (state.kind !== "observing") return state;
+      return { ...state, elapsedSec: state.elapsedSec + 1 };
+    case "start_finalize":
+      if (state.kind !== "observing") return state;
+      return {
+        kind: "finalizing",
+        sessionId: state.sessionId,
+        debuggerUrl: state.debuggerUrl,
+        snapshots: state.snapshots,
+        mappings: state.mappings,
+      };
+    case "success":
+      return {
+        kind: "success",
+        playbook: action.playbook,
+        provenance: action.provenance,
+      };
+    case "error":
+      return { kind: "error", message: action.message };
+    case "reset":
+      return { kind: "idle" };
+  }
+}
 
 export default function TeachPage() {
-  // Visual demo state
-  const [recording, setRecording] = useState(false);
-  const [mappings, setMappings] = useState<Mapping[]>([]);
-  const [elapsed, setElapsed] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [state, dispatch] = useReducer(reducer, { kind: "idle" } as Phase);
+  const [urlMode, setUrlMode] = useState<"suggested" | "custom">("suggested");
+  const [customUrl, setCustomUrl] = useState("");
+  const { speak, isPlaying, unlock } = useVoice();
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inferRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const announcedMappings = useRef<Set<string>>(new Set());
 
-  // Real demo state
-  const [realRunning, setRealRunning] = useState(false);
-  const [realResult, setRealResult] = useState<{
-    playbook: Playbook;
-    provenance: SolanaProvenance | null;
-  } | null>(null);
-  const [realError, setRealError] = useState<string | null>(null);
-
-  const { speak, isPlaying } = useVoice();
+  // El startUrl efectivo
+  const effectiveUrl =
+    urlMode === "custom" && customUrl.trim().length > 0
+      ? customUrl.trim()
+      : SUGGESTED_URL;
 
   useEffect(() => {
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (inferRef.current) clearInterval(inferRef.current);
+      if (tickRef.current) clearInterval(tickRef.current);
     };
   }, []);
 
-  const startVisualDemo = () => {
-    if (recording) return;
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (timerRef.current) clearInterval(timerRef.current);
+  // Poll snapshots (1.5s) + infer mappings (4s) + tick (1s) mientras observamos
+  useEffect(() => {
+    if (state.kind !== "observing") {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (inferRef.current) clearInterval(inferRef.current);
+      if (tickRef.current) clearInterval(tickRef.current);
+      pollRef.current = null;
+      inferRef.current = null;
+      tickRef.current = null;
+      return;
+    }
 
-    setRecording(true);
-    setMappings([]);
-    setElapsed(0);
+    const sessionId = state.sessionId;
 
-    let i = 0;
-    intervalRef.current = setInterval(() => {
-      const next = MOCK_MAPPINGS_PROGRESSIVE[i];
-      if (!next) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        return;
-      }
-      setMappings((prev) => [...prev, next]);
+    if (!pollRef.current) {
+      // 2.5s en lugar de 1.5s → menos overhead, todavía se siente live.
+      // Sin observe() de Stagehand, cada snapshot tarda <500ms.
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(
+            `/api/browser/observe?sessionId=${encodeURIComponent(sessionId)}`,
+          );
+          if (!res.ok) return;
+          const data = (await res.json()) as { snapshot: ObservedSnapshot };
+          dispatch({ type: "snapshot", snap: data.snapshot });
+        } catch {
+          /* ignore transient */
+        }
+      }, 2500);
+    }
+
+    if (!inferRef.current) {
+      // 8s entre inferencias + cache server-side por snapshotCount →
+      // protege los 10K output tokens/min del free tier Anthropic.
+      inferRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(
+            `/api/browser/infer-mappings?sessionId=${encodeURIComponent(sessionId)}`,
+          );
+          if (!res.ok) return;
+          const data = (await res.json()) as {
+            mappings: Mapping[];
+            cached?: boolean;
+            rate_limited?: boolean;
+          };
+          if (!data.mappings || data.mappings.length === 0) return;
+
+          // Narra solo mappings nuevos (no los del cache repetido)
+          for (const m of data.mappings) {
+            const k = `${m.source_field}→${m.destination_field}`;
+            if (announcedMappings.current.has(k)) continue;
+            announcedMappings.current.add(k);
+            const transformBit = m.transformation
+              ? ` con transformación ${m.transformation}`
+              : "";
+            void speak(
+              `Detecté un mapeo: ${m.source_field} corresponde a ${m.destination_field}${transformBit}.`,
+            );
+          }
+
+          dispatch({ type: "mappings_inferred", mappings: data.mappings });
+        } catch {
+          /* ignore transient */
+        }
+      }, 8000);
+    }
+
+    if (!tickRef.current) {
+      tickRef.current = setInterval(() => dispatch({ type: "tick" }), 1000);
+    }
+  }, [
+    state.kind,
+    state.kind === "observing" ? state.sessionId : null,
+    speak,
+  ]);
+
+  const handleStart = async () => {
+    await unlock();
+    announcedMappings.current.clear();
+    dispatch({ type: "start_create" });
+
+    if (urlMode === "custom") {
       void speak(
-        `Aprendí: ${next.source_field} mapea a ${next.destination_field}`,
+        `Iniciando navegador en ${hostnameOf(effectiveUrl)}. Espérame un momento.`,
       );
-      i++;
-    }, 2000);
-
-    timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-
-    setTimeout(() => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setRecording(false);
-    }, 12000);
-  };
-
-  const stopVisualDemo = () => {
-    setRecording(false);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-
-  const runRealDemo = async () => {
-    setRealRunning(true);
-    setRealError(null);
-    setRealResult(null);
-    void speak("Mandando observación a Claude para extraer playbook real");
+    } else {
+      void speak("Iniciando navegador en Browserbase. Espérame un momento.");
+    }
 
     try {
-      const res = await fetch("/api/playbook/extract", {
+      const res = await fetch("/api/browser/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(SYNTHETIC_RECORDING),
+        body: JSON.stringify({ startUrl: effectiveUrl }),
       });
       if (!res.ok) {
-        const err = (await res.json()) as { error?: string };
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as {
+        sessionId: string;
+        debuggerUrl: string;
+      };
+      dispatch({
+        type: "session_ready",
+        sessionId: data.sessionId,
+        debuggerUrl: data.debuggerUrl,
+      });
+      void speak(
+        "Listo. Empezá tu proceso. Yo voy infiriendo los mapeos en tiempo real.",
+      );
+    } catch (err) {
+      dispatch({ type: "error", message: (err as Error).message });
+    }
+  };
+
+  const handleStop = async () => {
+    if (state.kind !== "observing") return;
+    const sessionId = state.sessionId;
+    dispatch({ type: "start_finalize" });
+    void speak("Sintetizando el playbook completo y firmando en Solana.");
+
+    try {
+      const res = await fetch("/api/browser/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${res.status}`);
       }
       const data = (await res.json()) as {
         playbook: Playbook;
         provenance: SolanaProvenance | null;
       };
-      setRealResult(data);
-      // Reemplazar mappings visuales con los reales de Claude
-      setMappings(data.playbook.mappings ?? []);
+      dispatch({
+        type: "success",
+        playbook: data.playbook,
+        provenance: data.provenance,
+      });
+      const mappingCount = data.playbook.mappings?.length ?? 0;
       void speak(
-        `Playbook extraído con ${data.playbook.mappings?.length ?? 0} mapeos. Registrado en Solana.`,
+        `Playbook listo con ${mappingCount} mapeos. ${data.provenance ? "Firmado en Solana." : ""}`,
       );
     } catch (err) {
-      const msg = (err as Error).message;
-      setRealError(msg);
-      void speak("Hubo un error extrayendo el playbook");
-    } finally {
-      setRealRunning(false);
+      dispatch({ type: "error", message: (err as Error).message });
+      void speak("Hubo un error extrayendo el playbook.");
     }
   };
+
+  const handleReset = () => {
+    announcedMappings.current.clear();
+    dispatch({ type: "reset" });
+  };
+
+  // Derived
+  const debuggerUrl =
+    state.kind === "observing" || state.kind === "finalizing"
+      ? state.debuggerUrl
+      : undefined;
+  const liveMappings =
+    state.kind === "observing" || state.kind === "finalizing"
+      ? state.mappings
+      : [];
+  const snapshots =
+    state.kind === "observing" || state.kind === "finalizing"
+      ? state.snapshots
+      : [];
+  const elapsed = state.kind === "observing" ? state.elapsedSec : 0;
+  const viewerStatus: "idle" | "creating" | "observing" | "executing" =
+    state.kind === "creating"
+      ? "creating"
+      : state.kind === "observing"
+        ? "observing"
+        : state.kind === "finalizing"
+          ? "executing"
+          : "idle";
 
   return (
     <main className="min-h-screen p-8">
@@ -238,96 +341,332 @@ export default function TeachPage() {
         <header className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <p className="font-mono text-xs uppercase tracking-wider text-text-tertiary">
-              Capa 1 · Modo Observación
+              Capa 1 · Observación EN VIVO + inferencia incremental
             </p>
             <h1 className="text-2xl font-semibold tracking-tight">
               Themis aprende viendo
             </h1>
-            <p className="text-text-secondary">
-              Realiza el proceso UNA vez. Themis observa, mapea con Claude, registra en Solana.
+            <p className="text-text-secondary max-w-2xl">
+              Iniciá la sesión y hacé tu proceso real dentro del navegador
+              embebido. Themis infiere mapeos en tiempo real mientras observa,
+              después Claude consolida el playbook y Solana lo firma.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <VoiceIndicator active={isPlaying} source="agent" />
-            {recording ? (
-              <Button variant="destructive" onClick={stopVisualDemo}>
-                <Square className="w-4 h-4" />
-                Detener
-              </Button>
-            ) : (
-              <Button variant="secondary" onClick={startVisualDemo}>
-                <Circle className="w-4 h-4 fill-current animate-pulse-coral" />
-                Visual demo
-              </Button>
-            )}
-            <Button onClick={runRealDemo} disabled={realRunning}>
-              <Sparkles className="w-4 h-4" />
-              {realRunning ? "Procesando..." : "Generar Playbook real"}
-            </Button>
+            <PrimaryAction
+              state={state}
+              onStart={handleStart}
+              onStop={handleStop}
+              onReset={handleReset}
+              canStart={
+                urlMode === "suggested" ||
+                (customUrl.trim().length > 0 && isValidPublicUrl(customUrl))
+              }
+            />
           </div>
         </header>
 
-        {realResult?.provenance && (
-          <Card className="border-status-success/40 bg-status-success/5">
-            <CardContent className="p-4 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium">
-                  Playbook extraído por Claude · Persistido en knowledge graph
+        {/* URL Source Selector */}
+        {(state.kind === "idle" || state.kind === "error") && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <p className="text-xs font-mono uppercase tracking-widest text-text-tertiary">
+                ¿Qué sistema querés observar?
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => setUrlMode("suggested")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition ${
+                    urlMode === "suggested"
+                      ? "border-coral bg-coral/5 text-coral"
+                      : "border-border bg-white text-text-secondary hover:bg-bg-elevated"
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Sistema sugerido (demo)
+                </button>
+                <button
+                  onClick={() => setUrlMode("custom")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition ${
+                    urlMode === "custom"
+                      ? "border-coral bg-coral/5 text-coral"
+                      : "border-border bg-white text-text-secondary hover:bg-bg-elevated"
+                  }`}
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  Mi URL
+                </button>
+              </div>
+
+              {urlMode === "suggested" && (
+                <div className="text-xs text-text-secondary flex items-center gap-2 font-mono">
+                  <Globe className="w-3.5 h-3.5" />
+                  {SUGGESTED_URL}
+                </div>
+              )}
+
+              {urlMode === "custom" && (
+                <div className="space-y-2">
+                  <input
+                    type="url"
+                    value={customUrl}
+                    onChange={(e) => setCustomUrl(e.target.value)}
+                    placeholder="https://www.tu-sitio.com/login"
+                    className="w-full bg-bg-elevated border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-coral/30"
+                  />
+                  <p className="text-[11px] text-text-tertiary">
+                    Funciona con cualquier sitio HTTPS público. Bloqueamos IPs
+                    privadas, metadata services y loopback (anti-SSRF). Para
+                    sitios con login, vas a tener que loguearte dentro del
+                    iframe Browserbase antes de empezar el flujo.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Banners por fase */}
+        {state.kind === "creating" && (
+          <Card className="border-coral/40 bg-coral/5">
+            <CardContent className="p-4 flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-coral animate-spin shrink-0" />
+              <p className="text-sm">
+                Creando sesión Browserbase. Aparece el navegador en unos
+                segundos.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {state.kind === "finalizing" && (
+          <Card className="border-coral/40 bg-coral/5 animate-pulse">
+            <CardContent className="p-6 flex items-center gap-4">
+              <Loader2 className="w-8 h-8 text-coral animate-spin shrink-0" />
+              <div className="flex-1">
+                <p className="text-base font-medium">
+                  Sintetizando playbook completo
                 </p>
-                <p className="text-xs text-text-secondary mt-0.5">
-                  {realResult.playbook.name} — {realResult.playbook.mappings?.length ?? 0} mapeos · {realResult.playbook.steps.length} pasos
+                <p className="text-sm text-text-secondary mt-1">
+                  Claude consolida los {state.mappings.length} mappings live
+                  inferidos + secuencia de pasos · Solana firma · MongoDB guarda
+                </p>
+                <p className="text-xs text-text-tertiary mt-2 font-mono">
+                  ~20–30 segundos.
                 </p>
               </div>
-              <SolanaBadge provenance={realResult.provenance} />
             </CardContent>
           </Card>
         )}
 
-        {realError && (
+        {state.kind === "success" && (
+          <Card className="border-status-success/40 bg-status-success/5">
+            <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex-1 min-w-0 flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-status-success shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">
+                    Playbook extraído · Persistido en memoria
+                  </p>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    <span className="font-medium">{state.playbook.name}</span>{" "}
+                    — {state.playbook.mappings?.length ?? 0} mapeos ·{" "}
+                    {state.playbook.steps.length} pasos
+                  </p>
+                </div>
+              </div>
+              {state.provenance ? (
+                <SolanaBadge provenance={state.provenance} />
+              ) : (
+                <Badge variant="warning">Solana skipped</Badge>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {state.kind === "error" && (
           <Card className="border-status-error/40 bg-status-error/5">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-status-error">
-                Error extrayendo playbook
-              </p>
-              <p className="text-xs text-text-secondary mt-1 font-mono break-all">
-                {realError}
-              </p>
+            <CardContent className="p-4 flex items-start gap-3">
+              <XCircle className="w-5 h-5 text-status-error shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-status-error">
+                  Error en la observación
+                </p>
+                <p className="text-xs text-text-secondary mt-1 font-mono break-all">
+                  {state.message}
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+        {/* Vista principal: browser embebido + panel de mapeos LIVE */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b border-subtle">
-              <p className="text-sm font-medium">Sistema A · Origen</p>
-              <Badge variant={recording ? "error" : "secondary"}>
-                {recording ? `● Grabando ${elapsed}s` : "Inactivo"}
+              <p className="text-sm font-medium">
+                Sistema A · Navegador en vivo
+              </p>
+              <Badge
+                variant={
+                  state.kind === "observing"
+                    ? "error"
+                    : state.kind === "success"
+                      ? "default"
+                      : "secondary"
+                }
+              >
+                {state.kind === "observing"
+                  ? `● Observando · ${elapsed}s · ${snapshots.length} páginas`
+                  : state.kind === "creating"
+                    ? "Iniciando…"
+                    : state.kind === "finalizing"
+                      ? "Procesando…"
+                      : state.kind === "success"
+                        ? "Completo"
+                        : state.kind === "error"
+                          ? "Error"
+                          : "Inactivo"}
               </Badge>
             </CardHeader>
             <CardContent className="p-4">
               <BrowserViewer
-                url={SOURCE_URL}
-                status={recording ? "observing" : "idle"}
+                url={effectiveUrl}
+                status={viewerStatus}
+                debuggerUrl={debuggerUrl}
               />
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="lg:col-span-1">
             <CardHeader className="pb-3 border-b border-subtle">
-              <p className="text-sm font-medium">
-                Mapeos {realResult ? "(reales de Claude)" : "(visual demo)"} —{" "}
-                {mappings.length}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">
+                  {state.kind === "success"
+                    ? `Mapeos finales — ${state.playbook.mappings?.length ?? 0}`
+                    : `Mapeos detectados — ${liveMappings.length}`}
+                </p>
+                {state.kind === "observing" && liveMappings.length > 0 && (
+                  <Badge variant="default" className="text-[10px] animate-pulse">
+                    LIVE
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs text-text-secondary">
-                Themis identifica correspondencias source-field → destination-field
+                {state.kind === "observing"
+                  ? "Claude infiere correspondencias mientras observa"
+                  : state.kind === "success"
+                    ? "Sintetizadas + firmadas en Solana"
+                    : "Live inference cada 4 segundos"}
               </p>
             </CardHeader>
             <CardContent className="p-4">
-              <MappingTable mappings={mappings} />
+              {state.kind === "success" ? (
+                <MappingTable mappings={state.playbook.mappings ?? []} />
+              ) : liveMappings.length > 0 ? (
+                <MappingTable mappings={liveMappings} />
+              ) : (
+                <EmptyMappings active={state.kind === "observing"} />
+              )}
             </CardContent>
           </Card>
         </div>
       </div>
     </main>
   );
+}
+
+function PrimaryAction({
+  state,
+  onStart,
+  onStop,
+  onReset,
+  canStart,
+}: {
+  state: Phase;
+  onStart: () => void;
+  onStop: () => void;
+  onReset: () => void;
+  canStart: boolean;
+}) {
+  if (state.kind === "idle") {
+    return (
+      <Button onClick={onStart} disabled={!canStart}>
+        <Play className="w-4 h-4" />
+        Iniciar observación
+      </Button>
+    );
+  }
+  if (state.kind === "creating") {
+    return (
+      <Button disabled>
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Creando sesión…
+      </Button>
+    );
+  }
+  if (state.kind === "observing") {
+    return (
+      <Button variant="destructive" onClick={onStop}>
+        <Square className="w-4 h-4" />
+        Detener y aprender
+      </Button>
+    );
+  }
+  if (state.kind === "finalizing") {
+    return (
+      <Button disabled>
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Sintetizando…
+      </Button>
+    );
+  }
+  return (
+    <Button variant="secondary" onClick={onReset}>
+      <Power className="w-4 h-4" />
+      Nueva observación
+    </Button>
+  );
+}
+
+function EmptyMappings({ active }: { active: boolean }) {
+  return (
+    <div className="text-center py-12 px-4">
+      <Sparkles
+        className={`w-6 h-6 mx-auto ${active ? "text-coral animate-pulse" : "text-text-tertiary"}`}
+      />
+      <p className="text-sm text-text-secondary mt-3">
+        {active
+          ? "Themis observa. Los mapeos aparecen acá conforme aprende."
+          : "Aún no hay mapeos inferidos."}
+      </p>
+      {active && (
+        <p className="text-xs text-text-tertiary mt-2 max-w-xs mx-auto">
+          Hacé clic dentro del navegador embebido. Cada 4 segundos, Claude
+          revisa qué viste e infiere correspondencias entre campos.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+function isValidPublicUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (
+      (u.protocol === "https:" || u.protocol === "http:") &&
+      u.hostname.length > 0
+    );
+  } catch {
+    return false;
+  }
 }

@@ -9,8 +9,11 @@
     ".": "./src/index.ts",
     "./teach": "./src/teach/recorder.ts",
     "./playbook": "./src/playbook/extractor.ts",
+    "./playbook/live": "./src/playbook/live-mapping-inference.ts",
     "./cognitive": "./src/cognitive/gemini-recommendations.ts",
-    "./blockchain": "./src/blockchain/solana-client.ts"
+    "./blockchain": "./src/blockchain/solana-client.ts",
+    "./browser": "./src/browser/session-manager.ts",
+    "./execute": "./src/execute/executor.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

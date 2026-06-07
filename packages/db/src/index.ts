@@ -36,3 +36,13 @@ export {
   recallSimilarMappings,
   getStoreStatus,
 } from "./playbook-store";
+
+// Executions store (historial de runs + self-healing events)
+export {
+  saveExecution,
+  listExecutions,
+  getExecution,
+  listSelfHealEvents,
+  getExecutionsStatus,
+} from "./executions-store";
+export type { SelfHealEvent } from "./executions-store";

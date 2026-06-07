@@ -35,6 +35,13 @@ export type { RecorderConfig } from "./teach/recorder";
 // Capa 1 — Extracción
 export { extractPlaybookFromRecording } from "./playbook/extractor";
 
+// Capa 1 — Live mapping inference (durante observación)
+export {
+  inferPartialMappings,
+  partialToMapping,
+} from "./playbook/live-mapping-inference";
+export type { PartialMapping } from "./playbook/live-mapping-inference";
+
 // Capa 3 — Razonamiento contextual
 export { generateRecommendations } from "./cognitive/gemini-recommendations";
 
@@ -48,3 +55,18 @@ export type { ExecutorConfig } from "./execute/executor";
 // Capa 1 — Self-healing (vision fallback)
 export { selfHealStep } from "./execute/self-healing";
 export type { SelfHealingResult } from "./execute/self-healing";
+
+// Capa 1 — Browser session pool (live view + observation + execution sharing)
+export {
+  createSession,
+  getHandle,
+  getStagehand,
+  snapshot,
+  closeSession,
+  listSessions,
+} from "./browser/session-manager";
+export type {
+  BrowserSnapshot,
+  SessionHandle,
+  CreateSessionOpts,
+} from "./browser/session-manager";
