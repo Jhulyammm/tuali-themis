@@ -82,22 +82,38 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Capturamos UN snapshot fresco de la página final con un attach único.
-    // Si falla (la sesión murió), seguimos con los snapshots del cliente.
+    // ESTRATEGIA: fetch directo HTTP al startUrl (saltándose Browserbase).
+    // Browserbase nos da el WOW visual del iframe pero sus sesiones serverless
+    // son frágiles. Para extraer datos REALES del sitio, usamos fetch HTTP
+    // directo desde el server. Claude infiere playbook desde el HTML real.
     let allSnapshots: BrowserSnapshot[] = body.snapshots ?? [];
+
     try {
-      const freshSnapshot = await captureSnapshot(sessionId);
-      allSnapshots = [...allSnapshots, freshSnapshot];
+      const directSnapshot = await fetchPageAsSnapshot(body.startUrl);
+      allSnapshots = [...allSnapshots, directSnapshot];
     } catch (err) {
       console.warn(
-        "[/api/browser/finalize] fresh snapshot failed, using client-side only:",
+        "[/api/browser/finalize] direct HTTP fetch failed:",
         (err as Error).message,
       );
     }
 
+    // Fallback opcional: capturar via Browserbase si la sesión sigue viva
+    if (allSnapshots.length === 0) {
+      try {
+        const freshSnapshot = await captureSnapshot(sessionId);
+        allSnapshots = [...allSnapshots, freshSnapshot];
+      } catch (err) {
+        console.warn(
+          "[/api/browser/finalize] Browserbase snapshot fallback failed:",
+          (err as Error).message,
+        );
+      }
+    }
+
     if (allSnapshots.length === 0) {
       return badRequest(
-        "No hay snapshots para inferir playbook (sesión sin datos)",
+        "No pude extraer información del sitio. Verificá que la URL sea válida y accesible.",
       );
     }
 
@@ -144,6 +160,102 @@ export async function POST(request: NextRequest) {
   } finally {
     void closeSession(sessionId);
   }
+}
+
+/**
+ * Hace fetch HTTP directo al startUrl y parsea el HTML para extraer:
+ *   - Título de la página
+ *   - Labels visibles (lo que ve el usuario como nombre de campo)
+ *   - Headings + table headers
+ *   - Input names + placeholders (lo que Themis necesita para mapear)
+ *
+ * Convierte todo a un BrowserSnapshot que el extractor puede usar.
+ * Es server-side regex parsing — barato, sin DOM real ni Playwright.
+ */
+async function fetchPageAsSnapshot(url: string): Promise<BrowserSnapshot> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (compatible; ThemisAgent/1.0; +https://themis.dev)",
+      Accept: "text/html",
+    },
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} fetching ${url}`);
+  }
+  const html = await res.text();
+
+  // Extracción mínima — regex sobre HTML, suficiente para Claude
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const title = titleMatch?.[1]?.trim().slice(0, 200) ?? "";
+
+  const observations: string[] = [];
+  const seen = new Set<string>();
+
+  const pushUnique = (text: string) => {
+    const clean = text.replace(/\s+/g, " ").trim();
+    if (clean.length > 0 && clean.length < 100 && !seen.has(clean)) {
+      seen.add(clean);
+      observations.push(clean);
+    }
+  };
+
+  // Labels visibles
+  const labelMatches = html.matchAll(/<label[^>]*>([^<]+)<\/label>/gi);
+  for (const m of labelMatches) {
+    pushUnique(m[1] ?? "");
+    if (observations.length >= 30) break;
+  }
+
+  // Headings + table headers
+  const headingMatches = html.matchAll(
+    /<(h[1-3]|th)[^>]*>([^<]+)<\/\1>/gi,
+  );
+  for (const m of headingMatches) {
+    pushUnique(m[2] ?? "");
+    if (observations.length >= 50) break;
+  }
+
+  // Button text (acciones disponibles)
+  const buttonMatches = html.matchAll(/<button[^>]*>([^<]+)<\/button>/gi);
+  for (const m of buttonMatches) {
+    pushUnique(m[1] ?? "");
+    if (observations.length >= 60) break;
+  }
+
+  // Field values: extraemos name + placeholder de inputs
+  const field_values: Record<string, string> = {};
+  const inputMatches = html.matchAll(
+    /<input[^>]*\bname=["']([^"']+)["'][^>]*>/gi,
+  );
+  for (const m of inputMatches) {
+    const name = m[1] ?? "";
+    const placeholderMatch = m[0].match(/placeholder=["']([^"']+)["']/i);
+    const valueMatch = m[0].match(/value=["']([^"']+)["']/i);
+    if (name) {
+      field_values[name] =
+        placeholderMatch?.[1] ?? valueMatch?.[1] ?? "";
+    }
+    if (Object.keys(field_values).length >= 30) break;
+  }
+
+  // Select options (más contexto de qué campos hay)
+  const selectMatches = html.matchAll(
+    /<select[^>]*\bname=["']([^"']+)["'][^>]*>/gi,
+  );
+  for (const m of selectMatches) {
+    const name = m[1];
+    if (name && !field_values[name]) field_values[name] = "(select)";
+  }
+
+  return {
+    taken_at: new Date().toISOString(),
+    url,
+    title,
+    observations: observations.slice(0, 50),
+    field_values,
+  };
 }
 
 function buildRecording(
