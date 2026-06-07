@@ -103,12 +103,23 @@ function reducer(state: ExecState, action: ExecAction): ExecState {
         sessionId: action.sessionId,
         debuggerUrl: action.debuggerUrl,
       };
-    case "step":
+    case "step": {
+      // Si ya existe un log para este step_index, lo reemplazamos (caso del
+      // self-healing: primero llega "adapting", después "succeeded" con
+      // adapted_from/to). Sin esto el adapting se queda pulsando para siempre.
+      const existingIdx = state.logs.findIndex(
+        (l) => l.step_index === action.log.step_index,
+      );
+      const nextLogs =
+        existingIdx >= 0
+          ? state.logs.map((l, i) => (i === existingIdx ? action.log : l))
+          : [...state.logs, action.log];
       return {
         ...state,
-        logs: [...state.logs, action.log],
+        logs: nextLogs,
         currentIndex: action.log.step_index + 1,
       };
+    }
     case "done":
       return {
         ...state,
@@ -781,7 +792,8 @@ async function simulateExecution(
         timestamp: new Date().toISOString(),
       };
       dispatch({ type: "step", log: adapting });
-      collectedLogs.push(adapting);
+      // NO pusheamos el adapting al collectedLogs — solo es visual temporal.
+      // El log final (healed) reemplaza al adapting en la UI y se persiste.
       void speak(
         "Detecté que el campo cambió de nombre. Adaptando con visión, sin perder el flujo.",
         "alert",

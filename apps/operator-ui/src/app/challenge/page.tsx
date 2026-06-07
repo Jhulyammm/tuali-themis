@@ -377,21 +377,40 @@ export default function ChallengePage() {
       {/* Error */}
       {state.kind === "error" && (
         <Card className="border-status-error/40">
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-3">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-status-error flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-medium text-text-primary">No pude con el reto</p>
+                <p className="font-medium text-text-primary">No pude con esa URL</p>
                 <p className="text-sm text-text-secondary mt-1">
                   {state.message}
                 </p>
               </div>
             </div>
-            <Button
-              onClick={reset}
-              variant="outline"
-              className="w-full mt-4"
-            >
+
+            {/* URLs que SIEMPRE funcionan para que el jurado las pruebe en su lugar */}
+            <div className="bg-bg-elevated rounded-lg p-3 border border-border">
+              <p className="text-[10px] uppercase tracking-widest font-mono text-text-tertiary mb-2">
+                Probá con una de estas que sí garantizan mappings ricos:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTION_URLS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setUrl(s);
+                      setState({ kind: "idle" });
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-white border border-border text-text-secondary hover:bg-coral/5 hover:border-coral/40 hover:text-coral transition-colors font-mono"
+                  >
+                    {s.replace(/^https?:\/\//, "")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Button onClick={reset} variant="outline" className="w-full">
               Intentar otra URL
             </Button>
           </CardContent>

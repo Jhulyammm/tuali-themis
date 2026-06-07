@@ -194,9 +194,33 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("[/api/challenge]", err);
-    return NextResponse.json(sanitizedError(err, "Challenge failed"), {
-      status: 500,
-    });
+    const msg = (err as Error).message ?? "";
+    // Mensaje específico según tipo de falla para que el jurado entienda
+    // exactamente qué pasó y el operador pueda elegir otra URL.
+    let userMessage = "No pude con esa URL";
+    if (msg.includes("HTTP 4") || msg.includes("HTTP 5")) {
+      userMessage = `El sitio respondió ${msg.match(/HTTP \d+/)?.[0] ?? "con error"}. Probablemente bloquea bots — probá otra URL pública.`;
+    } else if (msg.includes("aborted") || msg.includes("TimeoutError")) {
+      userMessage = "El sitio tardó más de 15 segundos. Probá una URL más liviana.";
+    } else if (msg.includes("fetch failed") || msg.includes("ENOTFOUND") || msg.includes("getaddrinfo")) {
+      userMessage = "No pude resolver esa URL (DNS o sitio caído). Verificá que sea pública y esté online.";
+    } else if (msg.includes("Anthropic") || msg.includes("Claude") || msg.includes("overloaded") || msg.includes("rate_limit")) {
+      userMessage = "Claude está rate-limited. Esperá 30 segundos y probá de nuevo.";
+    } else if (msg.includes("Solana")) {
+      userMessage = "Solana devnet no respondió a tiempo. El playbook se aprendió pero no se firmó — probá otra vez.";
+    } else if (msg.toLowerCase().includes("json") || msg.includes("Unexpected")) {
+      userMessage = "Claude devolvió mappings malformados (el HTML era poco estructurado). Probá una URL con formularios visibles.";
+    } else if (msg.includes("Zod") || msg.includes("validation")) {
+      userMessage = "La estructura aprendida no pasó validación. La URL probablemente no tiene forms reales.";
+    }
+    return NextResponse.json(
+      {
+        ...sanitizedError(err, userMessage),
+        error: userMessage,
+        debug: msg.slice(0, 200),
+      },
+      { status: 500 },
+    );
   }
 }
 
