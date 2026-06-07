@@ -14,7 +14,7 @@
  */
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CATALOG } from "@/data/catalog";
 
 interface NewLine {
@@ -22,9 +22,19 @@ interface NewLine {
   cantidad_solicitada: number;
 }
 
+interface SuccessState {
+  pedido_id: string;
+  cliente: string;
+  total_neto: number;
+  lineas_count: number;
+  fecha: string;
+}
+
 export default function NuevoPedidoPage() {
-  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [success, setSuccess] = useState<SuccessState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Paso 1
   const [cliente, setCliente] = useState("OXXO Tec Sur");
@@ -55,6 +65,8 @@ export default function NuevoPedidoPage() {
   })();
 
   const handleSubmit = async () => {
+    setSaving(true);
+    setSaveError(null);
     const body = {
       cliente_destinatario: cliente,
       rfc_destinatario: rfc,
@@ -75,16 +87,137 @@ export default function NuevoPedidoPage() {
       ...totals,
     };
 
-    const res = await fetch("/api/pedidos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/pedidos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { pedido } = (await res.json()) as { pedido: { id: string } };
-      router.push(`/pedidos/${pedido.id}`);
+      // Mostramos confirmación inline (NO router.push). En Vercel serverless el
+      // store in-memory no sobrevive entre requests, así que /pedidos/[id]
+      // tiraba 404. Esto da feedback inmediato sin depender de persistencia.
+      setSuccess({
+        pedido_id: pedido.id,
+        cliente,
+        total_neto: totals.total_neto,
+        lineas_count: lineas.length,
+        fecha,
+      });
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
     }
   };
+
+  // Reset para crear otro pedido
+  const resetForm = () => {
+    setSuccess(null);
+    setSaveError(null);
+    setStep(1);
+  };
+
+  // Si guardamos exitoso, mostramos confirmación
+  if (success) {
+    return (
+      <div className="px-6 py-5 max-w-3xl mx-auto">
+        <div className="bg-white border-2 border-vendor-green rounded-sm overflow-hidden">
+          <div className="bg-vendor-green text-white px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white text-vendor-green flex items-center justify-center text-xl font-bold">
+                ✓
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider opacity-80">
+                  Pedido confirmado
+                </p>
+                <h1 className="text-xl font-semibold leading-tight">
+                  {success.pedido_id}
+                </h1>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-vendor-gray leading-relaxed">
+              Tu pedido fue registrado exitosamente en{" "}
+              <span className="font-semibold text-vendor-green">
+                Distribuidora del Norte
+              </span>
+              . Recibirás un correo con la confirmación y el folio fiscal
+              CFDI 4.0 en las próximas horas.
+            </p>
+
+            <div className="bg-vendor-gray-light p-4 rounded-sm space-y-2 text-sm">
+              <div className="flex justify-between border-b border-vendor-border pb-2">
+                <span className="text-vendor-gray">Folio</span>
+                <span className="font-mono text-vendor-green font-semibold">
+                  {success.pedido_id}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-vendor-border pb-2">
+                <span className="text-vendor-gray">Cliente destinatario</span>
+                <span className="font-medium">{success.cliente}</span>
+              </div>
+              <div className="flex justify-between border-b border-vendor-border pb-2">
+                <span className="text-vendor-gray">Fecha solicitud</span>
+                <span className="font-mono">{success.fecha}</span>
+              </div>
+              <div className="flex justify-between border-b border-vendor-border pb-2">
+                <span className="text-vendor-gray">Líneas</span>
+                <span className="font-mono">{success.lineas_count}</span>
+              </div>
+              <div className="flex justify-between pt-1">
+                <span className="text-vendor-gray font-semibold">
+                  Total neto sin IVA
+                </span>
+                <span className="font-mono text-vendor-green font-bold text-base">
+                  ${success.total_neto.toFixed(2)} MXN
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-3 text-xs text-vendor-gray leading-relaxed">
+              <p className="font-semibold text-blue-900 mb-1">Próximos pasos</p>
+              <p>
+                1. Recibirás correo de confirmación en{" "}
+                <span className="font-mono">ventas.mty@ddn.mx</span>
+              </p>
+              <p>
+                2. CFDI 4.0 se genera y envía en las próximas 4 horas hábiles
+              </p>
+              <p>
+                3. Embarque programado para{" "}
+                <span className="font-mono">{success.fecha}</span> desde {cd}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-3 border-t border-vendor-border">
+              <button
+                onClick={resetForm}
+                className="flex-1 px-4 py-2 bg-vendor-green text-white text-sm hover:bg-vendor-green-hover"
+              >
+                + Crear otro pedido
+              </button>
+              <Link
+                href="/pedidos"
+                className="flex-1 text-center px-4 py-2 border border-vendor-border text-vendor-green text-sm hover:bg-vendor-gray-light"
+              >
+                Ver todos los pedidos
+              </Link>
+              <Link
+                href="/"
+                className="px-4 py-2 text-vendor-gray text-sm hover:text-vendor-green"
+              >
+                ← Inicio
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-5 max-w-5xl mx-auto">
@@ -183,12 +316,19 @@ export default function NuevoPedidoPage() {
         ) : (
           <button
             onClick={() => void handleSubmit()}
-            className="text-xs px-4 py-2 bg-vendor-green text-white hover:bg-vendor-green-hover"
+            disabled={saving}
+            className="text-xs px-4 py-2 bg-vendor-green text-white hover:bg-vendor-green-hover disabled:opacity-60"
           >
-            ✓ Guardar pedido
+            {saving ? "Guardando..." : "✓ Guardar pedido"}
           </button>
         )}
       </div>
+
+      {saveError && (
+        <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 text-xs text-red-700 rounded-sm">
+          Error al guardar: {saveError}. Intenta de nuevo.
+        </div>
+      )}
     </div>
   );
 }

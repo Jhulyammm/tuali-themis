@@ -48,6 +48,9 @@ interface ExecState {
   currentIndex: number | undefined;
   execution: Execution | null;
   error: string | null;
+  /** URL actual del iframe — cambia dinamicamente durante el replay para
+   * que el jurado VEA a Themis navegar entre el catalogo y el ERP. */
+  currentIframeUrl: string | null;
 }
 
 type ExecAction =
@@ -57,6 +60,7 @@ type ExecAction =
   | { type: "start" }
   | { type: "session_ready"; sessionId: string; debuggerUrl: string | null }
   | { type: "step"; log: ExecutionLog }
+  | { type: "iframe_navigate"; url: string }
   | { type: "done"; execution: Execution }
   | { type: "error"; message: string };
 
@@ -71,6 +75,7 @@ const initialState: ExecState = {
   currentIndex: undefined,
   execution: null,
   error: null,
+  currentIframeUrl: null,
 };
 
 function reducer(state: ExecState, action: ExecAction): ExecState {
@@ -95,6 +100,7 @@ function reducer(state: ExecState, action: ExecAction): ExecState {
         currentIndex: 0,
         execution: null,
         error: null,
+        currentIframeUrl: null,
       };
     case "session_ready":
       return {
@@ -102,7 +108,10 @@ function reducer(state: ExecState, action: ExecAction): ExecState {
         status: "running",
         sessionId: action.sessionId,
         debuggerUrl: action.debuggerUrl,
+        currentIframeUrl: action.debuggerUrl, // arranca en la URL inicial
       };
+    case "iframe_navigate":
+      return { ...state, currentIframeUrl: action.url };
     case "step": {
       // Si ya existe un log para este step_index, lo reemplazamos (caso del
       // self-healing: primero llega "adapting", después "succeeded" con
@@ -577,11 +586,12 @@ export default function ExecutePage() {
             </CardHeader>
             <CardContent className="p-4">
               <BrowserViewer
-                url={sourceUrl}
+                url={state.currentIframeUrl ?? sourceUrl}
                 status={viewerStatus}
                 debuggerUrl={state.debuggerUrl ?? undefined}
                 directEmbed={
-                  state.status === "running" && isOwnDomainSafe(sourceUrl)
+                  state.status === "running" &&
+                  isOwnDomainSafe(state.currentIframeUrl ?? sourceUrl)
                 }
               />
             </CardContent>
@@ -753,6 +763,31 @@ async function simulateExecution(
   // al final. Sin esto, /registro no ve los runs del modo replay.
   const collectedLogs: ExecutionLog[] = [];
 
+  // URLs source y destination del playbook (fallback a env vars).
+  const SOURCE_URL =
+    playbook.source_url ||
+    process.env.NEXT_PUBLIC_SOURCE_SYSTEM_URL ||
+    "https://tuali-themis-source-system.vercel.app";
+  const DEST_URL =
+    playbook.destination_url ||
+    process.env.NEXT_PUBLIC_ERP_DESTINO_URL ||
+    SOURCE_URL;
+
+  // Páginas internas del source-system para que el iframe NAVEGUE visiblemente
+  // durante el replay. Cada step del playbook se mapea a una página que
+  // refleje lo que Themis está haciendo en ese momento.
+  const sourceRoot = SOURCE_URL.replace(/\/$/, "");
+  const destRoot = DEST_URL.replace(/\/$/, "");
+  const URL_CATALOG = `${sourceRoot}/catalogo`;
+  const URL_HOME = `${sourceRoot}/`;
+  const URL_PROMOCIONES = `${sourceRoot}/promociones`;
+  const URL_NUEVO_PEDIDO = `${destRoot}/pedidos/nuevo`;
+  const URL_PEDIDOS = `${destRoot}/pedidos`;
+
+  // Inicio: arrancamos visualmente en el dashboard del proveedor
+  dispatch({ type: "iframe_navigate", url: URL_HOME });
+  let onDestination = false;
+
   // Anuncios narrados al inicio para dar contexto al jurado
   if (steps.length > 4) {
     void speak(
@@ -773,15 +808,53 @@ async function simulateExecution(
       : 1300 + Math.random() * 700;
     await new Promise((r) => setTimeout(r, baseDelay));
 
-    // Narraciones específicas en momentos clave
-    if (step.action === "switch_system" && step.target === "destination") {
+    // ─── Navegación dinámica del iframe ──────────────────────────────
+    // Cada step mueve el iframe a una página distinta del source-system o
+    // destino. Esto le da al jurado la sensación de que Themis está
+    // navegando autónomamente, no solo animando un log.
+    if (step.action === "navigate") {
+      const target = "target" in step ? step.target : URL_HOME;
+      const url = /^https?:\/\//i.test(target) ? target : URL_HOME;
+      dispatch({ type: "iframe_navigate", url });
+    } else if (step.action === "switch_system") {
+      onDestination = step.target === "destination";
+      dispatch({
+        type: "iframe_navigate",
+        url: onDestination ? URL_NUEVO_PEDIDO : URL_HOME,
+      });
       void speak(
-        "Cambio al ERP de Tuali. Voy a poblar los campos con las transformaciones que aprendí.",
+        onDestination
+          ? "Cambio al ERP de Tuali. Voy a poblar los campos con las transformaciones que aprendí."
+          : "Vuelvo al catálogo del proveedor.",
         "firm",
       );
-    } else if (i === 0) {
-      // primer step (navigate) — narración inicial silenciada (ya hicimos la del start)
+    } else if (step.action === "wait_for") {
+      // Sin navegación — wait_for ocurre en la página actual
+    } else if (step.action === "click") {
+      // Click típicamente cambia de página. Heurística por el selector_intent.
+      const intent = ("selector_intent" in step ? step.selector_intent : "") || "";
+      const low = intent.toLowerCase();
+      if (low.includes("guardar") || low.includes("confirmar") || low.includes("enviar")) {
+        dispatch({
+          type: "iframe_navigate",
+          url: onDestination ? URL_PEDIDOS : URL_HOME,
+        });
+      } else if (low.includes("promoci") || low.includes("oferta")) {
+        dispatch({ type: "iframe_navigate", url: URL_PROMOCIONES });
+      } else if (low.includes("fila") || low.includes("sku") || low.includes("producto")) {
+        dispatch({ type: "iframe_navigate", url: URL_CATALOG });
+      }
+    } else if (step.action === "extract" || step.action === "extract_list") {
+      // Extracción del catálogo del proveedor
+      if (!onDestination) {
+        dispatch({ type: "iframe_navigate", url: URL_CATALOG });
+      }
+    } else if (step.action === "fill") {
+      // Los fills son en el formulario de nuevo pedido
+      dispatch({ type: "iframe_navigate", url: URL_NUEVO_PEDIDO });
+      onDestination = true;
     }
+    // ──────────────────────────────────────────────────────────────────
 
     if (i === healStepIdx && healStepIdx >= 0 && steps.length > 3) {
       const adapting: ExecutionLog = {
