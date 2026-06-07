@@ -23,18 +23,25 @@ interface Props {
   mappings: Mapping[];
 }
 
+function conf(m: Mapping): number {
+  return typeof m.confidence === "number" && Number.isFinite(m.confidence)
+    ? m.confidence
+    : 0;
+}
+
 export function ConfidenceHeatmap({ mappings }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
 
-  if (!mappings || mappings.length === 0) return null;
+  const safe = (mappings ?? []).filter(
+    (m): m is Mapping => !!m && typeof m.source_field === "string",
+  );
 
-  const avg =
-    mappings.reduce((s, m) => s + m.confidence, 0) / mappings.length;
-  const high = mappings.filter((m) => m.confidence >= 0.9).length;
-  const medium = mappings.filter(
-    (m) => m.confidence >= 0.7 && m.confidence < 0.9,
-  ).length;
-  const low = mappings.filter((m) => m.confidence < 0.7).length;
+  if (safe.length === 0) return null;
+
+  const avg = safe.reduce((s, m) => s + conf(m), 0) / safe.length;
+  const high = safe.filter((m) => conf(m) >= 0.9).length;
+  const medium = safe.filter((m) => conf(m) >= 0.7 && conf(m) < 0.9).length;
+  const low = safe.filter((m) => conf(m) < 0.7).length;
 
   const overallColor =
     avg >= 0.9
@@ -75,12 +82,12 @@ export function ConfidenceHeatmap({ mappings }: Props) {
           className="grid gap-1.5 mb-4"
           style={{
             gridTemplateColumns: `repeat(${Math.min(
-              Math.max(mappings.length, 8),
+              Math.max(safe.length, 8),
               20,
             )}, minmax(0, 1fr))`,
           }}
         >
-          {mappings.map((m, i) => (
+          {safe.map((m, i) => (
             <motion.div
               key={`${m.source_field}-${m.destination_field}-${i}`}
               initial={{ opacity: 0, scale: 0.5 }}
@@ -89,30 +96,30 @@ export function ConfidenceHeatmap({ mappings }: Props) {
               onMouseEnter={() => setHovered(i)}
               onMouseLeave={() => setHovered(null)}
               className={`aspect-square rounded cursor-pointer transition-all hover:scale-125 hover:z-10 relative ${colorClass(
-                m.confidence,
+                conf(m),
               )}`}
-              title={`${m.source_field} → ${m.destination_field} · ${(m.confidence * 100).toFixed(0)}%`}
+              title={`${m.source_field} → ${m.destination_field} · ${(conf(m) * 100).toFixed(0)}%`}
             />
           ))}
         </div>
 
         {/* Hover detail */}
-        {hovered !== null && mappings[hovered] && (
+        {hovered !== null && safe[hovered] && (
           <motion.div
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             className="border-l-2 border-coral/40 pl-3 py-2 mb-3"
           >
             <p className="text-xs font-mono text-text-tertiary">
-              {mappings[hovered].source_field} →{" "}
+              {safe[hovered].source_field} →{" "}
               <span className="text-coral">
-                {mappings[hovered].destination_field}
+                {safe[hovered].destination_field}
               </span>
             </p>
             <p className="text-sm font-medium text-text-primary mt-0.5">
-              {(mappings[hovered].confidence * 100).toFixed(0)}% de confianza
-              {mappings[hovered].transformation
-                ? ` · transforma con: ${mappings[hovered].transformation}`
+              {(conf(safe[hovered]) * 100).toFixed(0)}% de confianza
+              {safe[hovered].transformation
+                ? ` · transforma con: ${safe[hovered].transformation}`
                 : ""}
             </p>
           </motion.div>

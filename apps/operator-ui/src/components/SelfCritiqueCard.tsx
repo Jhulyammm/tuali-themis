@@ -26,9 +26,13 @@ const GRADE_COLORS: Record<PlaybookCritique["overall_grade"], string> = {
 };
 
 export function SelfCritiqueCard({ critique }: Props) {
-  const grade = critique.overall_grade;
-  const isAllGood =
-    grade === "A+" || (grade === "A" && critique.risks.length === 0);
+  if (!critique) return null;
+  const grade = critique.overall_grade ?? "B";
+  const risks = Array.isArray(critique.risks) ? critique.risks : [];
+  const improvements = Array.isArray(critique.improvements)
+    ? critique.improvements
+    : [];
+  const isAllGood = grade === "A+" || (grade === "A" && risks.length === 0);
 
   return (
     <Card className="border-coral/30 bg-gradient-to-br from-bg-elevated via-white to-white">
@@ -81,7 +85,7 @@ export function SelfCritiqueCard({ critique }: Props) {
           </div>
         )}
 
-        {critique.risks.length > 0 && (
+        {risks.length > 0 && (
           <div className="mb-4">
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-3.5 h-3.5 text-status-error" />
@@ -90,7 +94,7 @@ export function SelfCritiqueCard({ critique }: Props) {
               </p>
             </div>
             <ul className="space-y-1.5">
-              {critique.risks.map((r, i) => (
+              {risks.map((r, i) => (
                 <li
                   key={i}
                   className="text-sm text-text-secondary pl-4 relative before:absolute before:left-0 before:top-2 before:w-1 before:h-1 before:rounded-full before:bg-status-error"
@@ -102,7 +106,7 @@ export function SelfCritiqueCard({ critique }: Props) {
           </div>
         )}
 
-        {critique.improvements.length > 0 && (
+        {improvements.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Lightbulb className="w-3.5 h-3.5 text-coral" />
@@ -111,7 +115,7 @@ export function SelfCritiqueCard({ critique }: Props) {
               </p>
             </div>
             <ul className="space-y-1.5">
-              {critique.improvements.map((s, i) => (
+              {improvements.map((s, i) => (
                 <li
                   key={i}
                   className="text-sm text-text-secondary pl-4 relative before:absolute before:left-0 before:top-2 before:w-1 before:h-1 before:rounded-full before:bg-coral"

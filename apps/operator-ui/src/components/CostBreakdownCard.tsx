@@ -24,17 +24,22 @@ interface Props {
   hourlyUSD?: number;
 }
 
+function n(v: number | undefined): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
 export function CostBreakdownCard({
   cost,
   latency,
   manualMinutes = 6,
   hourlyUSD = 8.3,
 }: Props) {
+  const totalUsd = n(cost?.total_usd);
   const manualCost = (manualMinutes / 60) * hourlyUSD;
-  const themisTotal = Math.max(cost.total_usd, 0.0001);
+  const themisTotal = Math.max(totalUsd, 0.0001);
   const multiplier = Math.round(manualCost / themisTotal);
-  const savings = manualCost - cost.total_usd;
-  const themisSeconds = latency ? Math.round(latency.total_ms / 1000) : null;
+  const savings = manualCost - totalUsd;
+  const themisSeconds = latency ? Math.round(n(latency.total_ms) / 1000) : null;
 
   return (
     <Card className="border-coral/30 bg-gradient-to-br from-coral/5 via-white to-white overflow-hidden">
@@ -59,10 +64,10 @@ export function CostBreakdownCard({
 
         {/* Breakdown por capa */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <CostRow label="Capa 1 · Claude" usd={cost.capa1_claude_usd} />
-          <CostRow label="Capa 1 · Browserbase" usd={cost.capa1_browserbase_usd} />
-          <CostRow label="Capa 3 · Gemini" usd={cost.capa3_gemini_usd} />
-          <CostRow label="Capa 6 · Solana" usd={cost.capa6_solana_usd} />
+          <CostRow label="Capa 1 · Claude" usd={n(cost?.capa1_claude_usd)} />
+          <CostRow label="Capa 1 · Browserbase" usd={n(cost?.capa1_browserbase_usd)} />
+          <CostRow label="Capa 3 · Gemini" usd={n(cost?.capa3_gemini_usd)} />
+          <CostRow label="Capa 6 · Solana" usd={n(cost?.capa6_solana_usd)} />
         </div>
 
         {/* Comparativa */}
@@ -72,7 +77,7 @@ export function CostBreakdownCard({
               Themis (esta vez)
             </p>
             <p className="text-2xl font-bold tabular-nums text-coral">
-              ${cost.total_usd.toFixed(4)}
+              ${totalUsd.toFixed(4)}
             </p>
             {themisSeconds !== null && (
               <p className="text-[10px] text-text-tertiary">
@@ -105,7 +110,7 @@ export function CostBreakdownCard({
         </div>
 
         {/* Latency breakdown (si disponible) */}
-        {latency && latency.total_ms > 0 && (
+        {latency && n(latency.total_ms) > 0 && (
           <div className="mt-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2 mb-2">
               <Zap className="w-3 h-3 text-coral" />
@@ -114,10 +119,10 @@ export function CostBreakdownCard({
               </p>
             </div>
             <div className="grid grid-cols-4 gap-2 text-xs font-mono">
-              <LatencyBar label="Claude" ms={latency.claude_ms} max={latency.total_ms} />
-              <LatencyBar label="Browserbase" ms={latency.browserbase_ms} max={latency.total_ms} />
-              <LatencyBar label="Solana" ms={latency.solana_ms} max={latency.total_ms} />
-              <LatencyBar label="Otros" ms={latency.other_ms} max={latency.total_ms} />
+              <LatencyBar label="Claude" ms={n(latency.claude_ms)} max={n(latency.total_ms)} />
+              <LatencyBar label="Browserbase" ms={n(latency.browserbase_ms)} max={n(latency.total_ms)} />
+              <LatencyBar label="Solana" ms={n(latency.solana_ms)} max={n(latency.total_ms)} />
+              <LatencyBar label="Otros" ms={n(latency.other_ms)} max={n(latency.total_ms)} />
             </div>
           </div>
         )}
