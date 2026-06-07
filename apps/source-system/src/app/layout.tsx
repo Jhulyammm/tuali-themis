@@ -50,6 +50,12 @@ function VendorHeader() {
           href="/"
           className="px-3 py-1 hover:bg-white/10 rounded-sm transition"
         >
+          Inicio
+        </a>
+        <a
+          href="/catalogo"
+          className="px-3 py-1 hover:bg-white/10 rounded-sm transition"
+        >
           Catálogo
         </a>
         <a
@@ -64,9 +70,18 @@ function VendorHeader() {
         >
           Nuevo pedido
         </a>
-        <span className="px-3 py-1 opacity-60 cursor-not-allowed" title="No disponible en demo">
+        <a
+          href="/promociones"
+          className="px-3 py-1 hover:bg-white/10 rounded-sm transition"
+        >
+          Promociones
+        </a>
+        <a
+          href="/estado-cuenta"
+          className="px-3 py-1 hover:bg-white/10 rounded-sm transition"
+        >
           Estado de cuenta
-        </span>
+        </a>
       </nav>
     </header>
   );
