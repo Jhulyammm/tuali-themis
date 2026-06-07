@@ -240,13 +240,35 @@ function buildUserPrompt(recording: Recording): string {
 }
 
 function safeParseJson(text: string): unknown {
-  // Claude a veces wrappea en ```json ... ``` aunque le digamos que no
-  const cleaned = text
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/, "")
-    .replace(/\s*```$/, "")
-    .trim();
-  return JSON.parse(cleaned);
+  // Claude a veces wrappea en ```json ... ``` o agrega texto trailing.
+  // Extraemos el primer objeto JSON balanceado por defensa.
+  const obj = extractBalancedJsonObject(text);
+  if (!obj) throw new Error("No JSON object found in Claude response");
+  return JSON.parse(obj);
+}
+
+function extractBalancedJsonObject(raw: string): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 /**

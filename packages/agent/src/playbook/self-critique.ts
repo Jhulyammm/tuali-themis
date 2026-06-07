@@ -83,13 +83,17 @@ export async function critiquePlaybook(
 
     const text =
       res.content[0]?.type === "text" ? res.content[0].text : "";
-    const cleaned = text
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/, "")
-      .replace(/\s*```$/, "")
-      .trim();
 
-    const parsed = JSON.parse(cleaned);
+    // Extracción robusta: encontrar el primer { y el último } balanceado.
+    // Claude a veces devuelve markdown wrapping incompleto o texto trailing
+    // ("...y eso resume mi crítica.") después del JSON. Sin esto JSON.parse
+    // truena con "Unexpected non-whitespace character at position N".
+    const jsonStr = extractJsonObject(text);
+    if (!jsonStr) {
+      console.warn("[self-critique] no JSON object found in response");
+      return null;
+    }
+    const parsed = JSON.parse(jsonStr);
     const validated = ResponseSchema.safeParse(parsed);
     if (!validated.success) return null;
     return validated.data;
@@ -100,4 +104,44 @@ export async function critiquePlaybook(
     );
     return null;
   }
+}
+
+/**
+ * Extrae el primer objeto JSON balanceado del texto. Soporta cuando Claude
+ * envuelve con ```json ... ``` o cuando agrega texto antes/después.
+ */
+function extractJsonObject(raw: string): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  // Quita fences de markdown si están
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
 }

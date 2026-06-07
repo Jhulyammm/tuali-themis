@@ -38,6 +38,11 @@ interface UseVoiceReturn {
 
 export function useVoice(): UseVoiceReturn {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // genRef es un contador monotónico. Cada speak() captura su gen al inicio.
+  // Si llega otro speak() mientras la primera espera el fetch de ElevenLabs,
+  // bumpa el contador. Cuando la primera respuesta vuelve, ve que su gen ya
+  // no matchea el actual → descarta el audio en vez de reproducirlo encima.
+  const genRef = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +55,7 @@ export function useVoice(): UseVoiceReturn {
   }, []);
 
   const stop = useCallback(() => {
+    genRef.current++;
     audioRef.current?.pause();
     audioRef.current = null;
     setIsPlaying(false);
@@ -78,9 +84,11 @@ export function useVoice(): UseVoiceReturn {
   const speak = useCallback(
     async (text: string, mood: VoiceMood = "neutral") => {
       setError(null);
+      // stop() bumpa genRef. Cualquier speak() previo en curso descartará.
       stop();
+      const myGen = ++genRef.current;
       console.log(
-        `[useVoice] Pidiendo voz (${mood}): "${text.slice(0, 50)}..."`,
+        `[useVoice] Pidiendo voz (${mood}, gen=${myGen}): "${text.slice(0, 50)}..."`,
       );
 
       try {
@@ -89,33 +97,34 @@ export function useVoice(): UseVoiceReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, mood }),
         });
+
+        // Si otro speak() llegó mientras esperábamos, abandonamos sin reproducir.
+        if (myGen !== genRef.current) {
+          console.log(`[useVoice] gen=${myGen} descartado (current=${genRef.current})`);
+          return;
+        }
         if (!res.ok) {
           const errText = await res.text();
           throw new Error(`Voice API ${res.status}: ${errText.slice(0, 100)}`);
         }
 
         const blob = await res.blob();
+        if (myGen !== genRef.current) return; // chequeo post-blob también
         if (blob.size === 0) {
           throw new Error("ElevenLabs devolvió audio vacío (0 bytes)");
         }
-        console.log(`[useVoice] Audio recibido (${blob.size} bytes)`);
 
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audio.volume = 1.0;
         audioRef.current = audio;
 
-        audio.onplay = () => {
-          console.log("[useVoice] Audio comenzó a reproducirse");
-          setIsPlaying(true);
-        };
+        audio.onplay = () => setIsPlaying(true);
         audio.onended = () => {
-          console.log("[useVoice] Audio terminó");
           setIsPlaying(false);
           URL.revokeObjectURL(url);
         };
-        audio.onerror = (e) => {
-          console.error("[useVoice] Audio error:", e);
+        audio.onerror = () => {
           setError("Audio playback failed");
           setIsPlaying(false);
         };
@@ -125,13 +134,13 @@ export function useVoice(): UseVoiceReturn {
         } catch (playErr) {
           // Autoplay block (Chrome/Firefox)
           const msg = (playErr as Error).message;
-          console.error("[useVoice] play() rejected:", msg);
           setError(
             `Navegador bloqueó autoplay: ${msg}. Click en cualquier parte primero.`,
           );
           setIsPlaying(false);
         }
       } catch (err) {
+        if (myGen !== genRef.current) return; // ya descartado
         const msg = (err as Error).message;
         console.error("[useVoice] speak() falló:", msg);
         setError(msg);
