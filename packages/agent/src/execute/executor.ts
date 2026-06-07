@@ -22,7 +22,7 @@ import { selfHealStep } from "./self-healing";
 import {
   createSession,
   closeSession,
-  getStagehand,
+  attachStagehand,
 } from "../browser/session-manager";
 
 // ============================================================
@@ -76,19 +76,18 @@ export async function executePlaybook(
   let debuggerUrl: string | undefined;
 
   if (config.existingSessionId) {
-    const existing = getStagehand(config.existingSessionId);
-    if (!existing) {
-      throw new Error(
-        `existingSessionId "${config.existingSessionId}" not found in session pool`,
-      );
-    }
-    stagehand = existing;
+    // Stateless: nos re-conectamos a la sesión Browserbase existente
+    stagehand = attachStagehand(config.existingSessionId);
     sessionId = config.existingSessionId;
+    await stagehand.init();
   } else {
     const handle = await createSession({ startUrl: playbook.source_url });
     sessionId = handle.sessionId;
     debuggerUrl = handle.debuggerUrl;
-    stagehand = getStagehand(sessionId)!;
+    // Para una sesión recién creada, también necesitamos attach (la sesión
+    // está viva en Browserbase, createSession ya cerró su Stagehand local).
+    stagehand = attachStagehand(sessionId);
+    await stagehand.init();
     ownsSession = true;
   }
 
@@ -135,7 +134,13 @@ export async function executePlaybook(
       timestamp: new Date().toISOString(),
     });
   } finally {
-    // Solo cerramos si la creamos acá; sesiones prestadas las cierra quien las creó.
+    // Cerrar Stagehand local SIEMPRE (no afecta la sesión Browserbase remota)
+    try {
+      await stagehand.close();
+    } catch {
+      /* ignore */
+    }
+    // Si nosotros creamos la sesión BROWSERBASE, también la cerramos
     if (ownsSession && sessionId) {
       try {
         await closeSession(sessionId);

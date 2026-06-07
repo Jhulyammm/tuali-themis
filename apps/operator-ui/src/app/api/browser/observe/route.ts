@@ -1,20 +1,12 @@
 /**
  * GET /api/browser/observe?sessionId=X — toma snapshot del estado actual.
  *
- * El cliente hace polling cada ~1.5s mientras el operador interactúa con
- * el iframe Browserbase. Cada snapshot registra URL, título y un resumen
- * de elementos observados (page.observe()), que después se pasa a Claude
- * para reconstruir steps + mappings.
- *
- * Returns: { snapshot, totalSnapshots, sessionId }
- *
- * Seguridad:
- *  - sessionId pattern-validated (anti path traversal / injection)
- *  - rate limit per-IP (polling normal: 40/min = 1.5s; tope 90 = espacio para multi-pestaña)
+ * STATELESS: attach a la sesión BROWSERBASE vía API, captura snapshot, retorna.
+ * El cliente acumula los snapshots en su React state.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { snapshot, getHandle } from "@hack4her/agent/browser";
+import { snapshot } from "@hack4her/agent/browser";
 import {
   rateLimit,
   getClientIp,
@@ -25,6 +17,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -39,19 +32,18 @@ export async function GET(request: NextRequest) {
     return badRequest("'sessionId' inválido");
   }
 
-  const handle = getHandle(sessionId);
-  if (!handle) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
-  }
-
   try {
     const snap = await snapshot(sessionId);
-    return NextResponse.json({
-      sessionId,
-      snapshot: snap,
-      totalSnapshots: handle.snapshots.length,
-    });
+    return NextResponse.json({ sessionId, snapshot: snap });
   } catch (err) {
+    const msg = (err as Error).message ?? "";
+    // Si la sesión Browserbase expiró/se cerró, retornar 410 (gone) en vez de 500
+    if (msg.includes("no longer alive") || msg.includes("not found")) {
+      return NextResponse.json(
+        { error: "Browserbase session expired", expired: true },
+        { status: 410 },
+      );
+    }
     console.error("[/api/browser/observe]", err);
     return NextResponse.json(sanitizedError(err, "Observe failed"), {
       status: 500,

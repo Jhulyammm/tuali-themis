@@ -87,17 +87,18 @@ ${JSON.stringify(compact, null, 2)}
 
 ¿Qué mappings detectás hasta ahora? Solo los que tengan evidencia clara.`;
 
-  const response = await client.messages.create({
-    model:
-      process.env.LIVE_INFERENCE_MODEL ?? "claude-haiku-4-5",
-    // 400 tokens es suficiente para enumerar 5-10 mappings JSON.
-    // Bajar de 1024 → 400 reduce ~60% del consumo por call → cabemos en
-    // los 10K/min de free tier Anthropic.
-    max_tokens: 400,
-    temperature: 0.2,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
+  // Retry con exponential backoff — si Anthropic 429s, esperamos y reintentamos
+  // hasta 3 veces. Crítico para demo en vivo: si truena el primer call, igual
+  // hay chance de recuperarse sin romper la UX.
+  const response = await retryWithBackoff(async () =>
+    client.messages.create({
+      model: process.env.LIVE_INFERENCE_MODEL ?? "claude-haiku-4-5",
+      max_tokens: 400,
+      temperature: 0.2,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  );
 
   const text =
     response.content[0]?.type === "text" ? response.content[0].text : "";
@@ -139,4 +140,41 @@ export function partialToMapping(p: PartialMapping): Mapping {
     transformation: p.transformation,
     examples: [],
   };
+}
+
+/**
+ * Reintenta una llamada async con exponential backoff. Crítico para resilencia
+ * en demo en vivo cuando Anthropic devuelve 429 (rate limit).
+ *
+ * Esperas: 500ms → 1.5s → 4s. Max 3 intentos. Si el último también truena,
+ * propaga la excepción al caller.
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const msg = (err as Error).message ?? "";
+      // Solo retry si es rate limit o transient. Otros errores fallan rápido.
+      const retryable =
+        msg.includes("429") ||
+        msg.includes("rate_limit") ||
+        msg.includes("overloaded") ||
+        msg.includes("timeout") ||
+        msg.includes("ECONNRESET");
+      if (!retryable || attempt === maxAttempts) throw err;
+
+      const delayMs = Math.min(500 * Math.pow(3, attempt - 1), 5000);
+      console.warn(
+        `[live-mapping-inference] attempt ${attempt} failed (${msg.slice(0, 80)}), retry in ${delayMs}ms`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastError;
 }

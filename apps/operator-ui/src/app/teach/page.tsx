@@ -171,13 +171,28 @@ export default function TeachPage() {
     const sessionId = state.sessionId;
 
     if (!pollRef.current) {
-      // 2.5s en lugar de 1.5s → menos overhead, todavía se siente live.
-      // Sin observe() de Stagehand, cada snapshot tarda <500ms.
+      // 2.5s entre polls. Sin observe() de Stagehand cada snapshot tarda <500ms.
       pollRef.current = setInterval(async () => {
         try {
           const res = await fetch(
             `/api/browser/observe?sessionId=${encodeURIComponent(sessionId)}`,
           );
+          // 410 = sesión Browserbase expiró/cerró. Detener polling y narrar.
+          if (res.status === 410) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            if (inferRef.current) clearInterval(inferRef.current);
+            pollRef.current = null;
+            inferRef.current = null;
+            dispatch({
+              type: "error",
+              message:
+                "La sesión Browserbase expiró. Reiniciá la observación.",
+            });
+            void speak(
+              "La sesión del navegador expiró. Por favor, reinicia la observación.",
+            );
+            return;
+          }
           if (!res.ok) return;
           const data = (await res.json()) as { snapshot: ObservedSnapshot };
           dispatch({ type: "snapshot", snap: data.snapshot });
@@ -188,13 +203,20 @@ export default function TeachPage() {
     }
 
     if (!inferRef.current) {
-      // 8s entre inferencias + cache server-side por snapshotCount →
-      // protege los 10K output tokens/min del free tier Anthropic.
+      // 8s entre inferencias. Server stateless: enviamos los snapshots
+      // acumulados del estado React al server en cada POST.
+      // Cache server-side por fingerprint protege los 10K tokens/min Anthropic.
       inferRef.current = setInterval(async () => {
         try {
-          const res = await fetch(
-            `/api/browser/infer-mappings?sessionId=${encodeURIComponent(sessionId)}`,
-          );
+          const currentSnapshots =
+            state.kind === "observing" ? state.snapshots : [];
+          if (currentSnapshots.length < 2) return;
+
+          const res = await fetch("/api/browser/infer-mappings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ snapshots: currentSnapshots }),
+          });
           if (!res.ok) return;
           const data = (await res.json()) as {
             mappings: Mapping[];
@@ -274,7 +296,11 @@ export default function TeachPage() {
 
   const handleStop = async () => {
     if (state.kind !== "observing") return;
+    // Capturamos el snapshot del state ANTES de dispatch (cierra el closure)
     const sessionId = state.sessionId;
+    const finalSnapshots = state.snapshots;
+    const finalStartUrl = effectiveUrl;
+
     dispatch({ type: "start_finalize" });
     void speak("Sintetizando el playbook completo y firmando en Solana.");
 
@@ -282,7 +308,11 @@ export default function TeachPage() {
       const res = await fetch("/api/browser/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          sessionId,
+          snapshots: finalSnapshots,
+          startUrl: finalStartUrl,
+        }),
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };

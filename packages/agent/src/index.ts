@@ -57,12 +57,15 @@ export { selfHealStep } from "./execute/self-healing";
 export type { SelfHealingResult } from "./execute/self-healing";
 
 // Capa 1 — Browser session pool (live view + observation + execution sharing)
+// STATELESS: createSession/snapshot/closeSession + attachStagehand para execute.
 export {
   createSession,
-  getHandle,
-  getStagehand,
+  attachStagehand,
   snapshot,
   closeSession,
+  // Legacy (deprecated, retornan null/empty para no romper imports)
+  getHandle,
+  getStagehand,
   listSessions,
 } from "./browser/session-manager";
 export type {

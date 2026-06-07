@@ -1,24 +1,29 @@
 /**
- * POST /api/execute — corre un Playbook con Stagehand y stream-ea progreso via SSE.
+ * /api/execute — corre un Playbook con Stagehand.
  *
- * Body:
- *   { playbook: Playbook, parameters: Record<string, unknown>, existingSessionId?: string }
+ * MODO POLLING (no SSE) porque Vercel Hobby corta lambdas a 60s y los
+ * streams se rompen. El cliente:
+ *   1. POST /api/execute  → recibe { executionId }
+ *   2. GET  /api/execute?id=X cada 1.5s → recibe { logs, done, error, debuggerUrl }
+ *   3. Cuando done=true, deja de pollear.
  *
- * Response (text/event-stream):
- *   event: session_ready  data: { sessionId, debuggerUrl }
- *   event: step_update    data: ExecutionLog
- *   event: self_healing   data: PlaybookAction
- *   event: done           data: { execution }
- *   event: error          data: { message }
- *
- * Si `existingSessionId` viene en el body, reusa esa sesión Browserbase
- * (la misma del modo observación → el jurado ve a Themis manejar el mismo
- * browser donde acababa de demostrar).
+ * El estado de la ejecución vive en `executions-stream` (in-memory).
+ * Si Vercel mata la lambda y arranca otra, el polling devuelve "not found"
+ * y el cliente muestra "ejecución perdida, reintenta" — caso bordes raros.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { executePlaybook } from "@hack4her/agent/execute";
-import { saveExecution } from "@hack4her/db";
+import {
+  saveExecution,
+  startRunning,
+  setSession,
+  appendLog,
+  markDone,
+  markError,
+  getRunning,
+  pruneOld,
+} from "@hack4her/db";
 import type {
   ExecutionLog,
   Playbook,
@@ -33,7 +38,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 interface ExecuteRequestBody {
   playbook: Playbook;
@@ -41,6 +46,9 @@ interface ExecuteRequestBody {
   existingSessionId?: string;
 }
 
+// ============================================================
+// POST → arranca la ejecución (fire-and-forget) y devuelve executionId
+// ============================================================
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!rateLimit(`execute:${ip}`, 5, 60_000)) {
@@ -76,55 +84,99 @@ export async function POST(request: NextRequest) {
       status: 400,
     });
   }
-
   if (body.playbook.steps.length > 200) {
     return new Response("Playbook tiene demasiados steps (max 200)", {
       status: 413,
     });
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (event: string, data: unknown) => {
-        const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(payload));
-      };
+  pruneOld(); // limpia ejecuciones viejas en la lambda caliente
 
-      try {
-        const execution = await executePlaybook(body.playbook, {
-          parameters: body.parameters ?? {},
-          existingSessionId: body.existingSessionId,
-          onSession: (info) => send("session_ready", info),
-          onStepUpdate: (log: ExecutionLog) => send("step_update", log),
-          onSelfHealing: (step: PlaybookAction) => send("self_healing", step),
-        });
+  const executionId = crypto.randomUUID();
 
-        // Persistir el run completo (sirve a /registro y /auto-reparacion)
-        try {
-          await saveExecution(execution);
-        } catch (err) {
-          console.warn(
-            "[/api/execute] saveExecution skipped:",
-            (err as Error).message,
-          );
-        }
-
-        send("done", { execution });
-      } catch (err) {
-        send("error", { message: (err as Error).message || "Execution failed" });
-      } finally {
-        controller.close();
-      }
-    },
+  // Inicializa el estado en memoria
+  startRunning(executionId, {
+    id: executionId,
+    playbook_id: body.playbook.id,
+    parameters: body.parameters ?? {},
+    status: "running",
+    current_step_index: 0,
+    logs: [],
+    started_at: new Date().toISOString(),
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
+  // Lanza fire-and-forget. NO await — devolvemos al cliente de inmediato.
+  // Si la lambda se mata antes de terminar, igual el estado intermedio queda.
+  void runInBackground(executionId, body);
+
+  return NextResponse.json({
+    executionId,
+    status: "running",
+    pollUrl: `/api/execute?id=${executionId}`,
+  });
+}
+
+async function runInBackground(
+  executionId: string,
+  body: ExecuteRequestBody,
+): Promise<void> {
+  try {
+    const execution = await executePlaybook(body.playbook, {
+      parameters: body.parameters ?? {},
+      existingSessionId: body.existingSessionId,
+      onSession: (info) => {
+        setSession(executionId, info.sessionId, info.debuggerUrl);
+      },
+      onStepUpdate: (log: ExecutionLog) => {
+        appendLog(executionId, log);
+      },
+      onSelfHealing: (_step: PlaybookAction) => {
+        // log warning para Vercel
+        console.log(`[execute ${executionId}] self-healing triggered`);
+      },
+    });
+
+    try {
+      await saveExecution(execution);
+    } catch (err) {
+      console.warn(
+        "[execute] saveExecution skipped:",
+        (err as Error).message,
+      );
+    }
+
+    markDone(executionId, execution);
+  } catch (err) {
+    markError(executionId, (err as Error).message ?? "Execution failed");
+  }
+}
+
+// ============================================================
+// GET → polling del estado de la ejecución
+// ============================================================
+export async function GET(request: NextRequest) {
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
+
+  const running = getRunning(id);
+  if (!running) {
+    return NextResponse.json(
+      { error: "Execution not found", expired: true },
+      { status: 410 },
+    );
+  }
+
+  return NextResponse.json({
+    executionId: id,
+    sessionId: running.sessionId,
+    debuggerUrl: running.debuggerUrl,
+    logs: running.logs,
+    logsCount: running.logs.length,
+    done: running.done,
+    error: running.error,
+    execution: running.done ? running.execution : undefined,
+    elapsed_ms: Date.now() - running.startedAt,
   });
 }

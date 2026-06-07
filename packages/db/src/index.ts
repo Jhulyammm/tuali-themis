@@ -46,3 +46,16 @@ export {
   getExecutionsStatus,
 } from "./executions-store";
 export type { SelfHealEvent } from "./executions-store";
+
+// Streaming store (in-memory para execution status polling — funciona si la
+// lambda Vercel se queda caliente; cliente fallbacks a "ejecutando" si no)
+export {
+  startRunning,
+  setSession,
+  appendLog,
+  markDone,
+  markError,
+  getRunning,
+  pruneOld,
+} from "./executions-stream";
+export type { RunningExecution } from "./executions-stream";

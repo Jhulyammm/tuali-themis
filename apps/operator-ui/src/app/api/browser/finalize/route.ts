@@ -1,23 +1,24 @@
 /**
  * POST /api/browser/finalize — cierra observación, extrae playbook, firma on-chain.
  *
- * Body:  { sessionId, audioTranscript?: string, name?: string, intent?: string }
- * Returns: { playbook, provenance }
+ * STATELESS: el cliente envía sessionId + snapshots + startUrl en el body.
  *
- * Flow:
- *   1. Lee snapshots acumulados por el SessionManager
- *   2. Construye Recording sintético desde los snapshots (URLs visitadas + observations + field_values)
- *   3. Llama extractPlaybookFromRecording (Claude Sonnet 4.6)
- *   4. Registra hash en Solana devnet (Capa 6)
- *   5. Guarda en knowledge graph (Capa 4)
- *   6. Cierra la sesión Browserbase
+ * Body:
+ *   {
+ *     sessionId: string,
+ *     snapshots: BrowserSnapshot[],
+ *     startUrl: string,
+ *     audioTranscript?: string,
+ *     name?: string,
+ *   }
+ *
+ * Returns: { playbook, provenance, snapshotsCount }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { extractPlaybookFromRecording } from "@hack4her/agent/playbook";
 import { createSolanaClientFromEnv } from "@hack4her/agent/blockchain";
 import {
-  getHandle,
   closeSession,
   type BrowserSnapshot,
 } from "@hack4her/agent/browser";
@@ -33,16 +34,16 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 interface FinalizeBody {
   sessionId: string;
+  snapshots: BrowserSnapshot[];
+  startUrl: string;
   audioTranscript?: string;
   name?: string;
 }
 
-// sessionId de Browserbase es un UUID-like string. Validamos shape para
-// rechazar paths/inyecciones.
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
 export async function POST(request: NextRequest) {
@@ -51,38 +52,43 @@ export async function POST(request: NextRequest) {
     return tooManyRequests("Demasiados finalize calls. Esperá 1 minuto.");
   }
 
-  let sessionId: string | undefined;
+  let body: FinalizeBody;
   try {
-    const body = (await request.json()) as FinalizeBody;
-    sessionId = body.sessionId;
-    if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
-      return badRequest("'sessionId' inválido");
-    }
-    if (body.audioTranscript && body.audioTranscript.length > 8000) {
-      return badRequest("'audioTranscript' max 8000 chars");
-    }
-    if (body.name && body.name.length > 200) {
-      return badRequest("'name' max 200 chars");
-    }
+    body = (await request.json()) as FinalizeBody;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
 
-    const handle = getHandle(sessionId);
-    if (!handle) {
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 },
-      );
-    }
+  const sessionId = body.sessionId;
+  if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
+    return badRequest("'sessionId' inválido");
+  }
+  if (!Array.isArray(body.snapshots) || body.snapshots.length === 0) {
+    return badRequest("'snapshots' debe ser un array no vacío");
+  }
+  if (body.snapshots.length > 100) {
+    return badRequest("Demasiados snapshots (max 100)");
+  }
+  if (body.audioTranscript && body.audioTranscript.length > 8000) {
+    return badRequest("'audioTranscript' max 8000 chars");
+  }
+  if (body.name && body.name.length > 200) {
+    return badRequest("'name' max 200 chars");
+  }
+  if (!body.startUrl || typeof body.startUrl !== "string") {
+    return badRequest("'startUrl' es requerido");
+  }
 
-    const recording = buildRecording(handle.snapshots, {
+  try {
+    const recording = buildRecording(body.snapshots, {
       sessionId,
-      startUrl: handle.startUrl,
+      startUrl: body.startUrl,
       audioTranscript: body.audioTranscript,
     });
 
     const playbook = await extractPlaybookFromRecording(recording);
     if (body.name) playbook.name = body.name;
 
-    // Capa 6 — Solana
     let provenance = null;
     try {
       const solana = createSolanaClientFromEnv();
@@ -95,7 +101,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Capa 4 — Persistir
     try {
       await saveSavedPlaybook(playbook);
     } catch (err) {
@@ -108,7 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       playbook,
       provenance,
-      snapshotsCount: handle.snapshots.length,
+      snapshotsCount: body.snapshots.length,
     });
   } catch (err) {
     console.error("[/api/browser/finalize]", err);
@@ -116,16 +121,9 @@ export async function POST(request: NextRequest) {
       status: 500,
     });
   } finally {
-    if (sessionId) {
-      // Browserbase consume minutos; cerrar siempre
-      void closeSession(sessionId);
-    }
+    void closeSession(sessionId);
   }
 }
-
-// ============================================================
-// Recording builder: snapshots → shape que entiende el extractor
-// ============================================================
 
 function buildRecording(
   snapshots: BrowserSnapshot[],

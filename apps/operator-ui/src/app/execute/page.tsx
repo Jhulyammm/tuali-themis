@@ -165,7 +165,8 @@ export default function ExecutePage() {
     );
 
     try {
-      const res = await fetch("/api/execute", {
+      // 1) POST inicia y devuelve executionId
+      const startRes = await fetch("/api/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -173,37 +174,93 @@ export default function ExecutePage() {
           parameters: { product_id: state.productId },
         }),
       });
-      if (!res.ok || !res.body) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
+      if (!startRes.ok) {
+        const text = await startRes.text();
+        throw new Error(text || `HTTP ${startRes.status}`);
       }
-      await consumeSSE(res.body, (event, data) => {
-        if (event === "session_ready") {
+      const { executionId } = (await startRes.json()) as {
+        executionId: string;
+      };
+
+      // 2) Polling cada 1.5s al GET /api/execute?id=X
+      const seenLogs = new Set<number>();
+      let lastAnnouncedHealCount = 0;
+      let attempt = 0;
+
+      while (true) {
+        await new Promise((r) => setTimeout(r, 1500));
+        attempt++;
+        if (attempt > 240) {
+          throw new Error(
+            "Timeout: la ejecución superó 6 minutos sin completar",
+          );
+        }
+
+        let pollRes: Response;
+        try {
+          pollRes = await fetch(
+            `/api/execute?id=${encodeURIComponent(executionId)}`,
+          );
+        } catch {
+          continue; // network blip, reintentamos
+        }
+
+        if (pollRes.status === 410) {
+          throw new Error("La ejecución expiró en el servidor (lambda fría).");
+        }
+        if (!pollRes.ok) continue;
+
+        const poll = (await pollRes.json()) as {
+          sessionId?: string;
+          debuggerUrl?: string;
+          logs?: ExecutionLog[];
+          done?: boolean;
+          error?: string;
+          execution?: Execution;
+        };
+
+        // Anunciar session_ready la primera vez que aparezca debuggerUrl
+        if (poll.sessionId && state.status !== "running") {
           dispatch({
             type: "session_ready",
-            sessionId: (data as { sessionId: string }).sessionId,
-            debuggerUrl: (data as { debuggerUrl?: string }).debuggerUrl ?? null,
+            sessionId: poll.sessionId,
+            debuggerUrl: poll.debuggerUrl ?? null,
           });
-        } else if (event === "step_update") {
-          dispatch({ type: "step", log: data as ExecutionLog });
-        } else if (event === "self_healing") {
-          void speak("Detecté un cambio en la página. Adaptando con visión.");
-        } else if (event === "done") {
-          const exec = (data as { execution: Execution }).execution;
-          dispatch({ type: "done", execution: exec });
-          void speak(
-            exec.status === "succeeded"
-              ? "Ejecución completada. Datos transferidos al sistema destino."
-              : "La ejecución terminó con errores. Revisa el log.",
-          );
-        } else if (event === "error") {
-          dispatch({
-            type: "error",
-            message: (data as { message: string }).message,
-          });
-          void speak("La ejecución falló.");
         }
-      });
+
+        // Dispatcher de logs nuevos
+        for (const log of poll.logs ?? []) {
+          const key = log.step_index;
+          if (seenLogs.has(key)) continue;
+          seenLogs.add(key);
+          dispatch({ type: "step", log });
+        }
+
+        // Anunciar self-healing si subió el count
+        const healCount = (poll.logs ?? []).filter((l) => l.adapted_to).length;
+        if (healCount > lastAnnouncedHealCount) {
+          lastAnnouncedHealCount = healCount;
+          void speak(
+            "Detecté un cambio en la página. Adaptando con visión.",
+          );
+        }
+
+        // Done?
+        if (poll.done) {
+          if (poll.error) {
+            dispatch({ type: "error", message: poll.error });
+            void speak("La ejecución falló.");
+          } else if (poll.execution) {
+            dispatch({ type: "done", execution: poll.execution });
+            void speak(
+              poll.execution.status === "succeeded"
+                ? "Ejecución completada. Datos transferidos al sistema destino."
+                : "La ejecución terminó con errores. Revisa el log.",
+            );
+          }
+          break;
+        }
+      }
     } catch (err) {
       dispatch({ type: "error", message: (err as Error).message });
       void speak("La ejecución falló.");

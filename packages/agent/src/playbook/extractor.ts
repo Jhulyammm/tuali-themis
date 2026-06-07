@@ -162,13 +162,16 @@ export async function extractPlaybookFromRecording(
 ): Promise<Playbook> {
   const userPrompt = buildUserPrompt(recording);
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    temperature: 0.1, // baja para consistencia
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
+  // Retry con backoff por si Anthropic 429s — crítico al final de observación.
+  const response = await retryWithBackoff(async () =>
+    client.messages.create({
+      model: process.env.EXTRACTOR_MODEL ?? "claude-haiku-4-5",
+      max_tokens: 4096,
+      temperature: 0.1,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  );
 
   const text = response.content[0]?.type === "text" ? response.content[0].text : "";
   const json = safeParseJson(text);
@@ -222,6 +225,38 @@ function safeParseJson(text: string): unknown {
     .replace(/\s*```$/, "")
     .trim();
   return JSON.parse(cleaned);
+}
+
+/**
+ * Retry con exponential backoff para llamadas a Anthropic.
+ * Espera: 500ms → 1.5s → 4s. Hasta 3 intentos.
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const msg = (err as Error).message ?? "";
+      const retryable =
+        msg.includes("429") ||
+        msg.includes("rate_limit") ||
+        msg.includes("overloaded") ||
+        msg.includes("timeout") ||
+        msg.includes("ECONNRESET");
+      if (!retryable || attempt === maxAttempts) throw err;
+      const delayMs = Math.min(500 * Math.pow(3, attempt - 1), 5000);
+      console.warn(
+        `[extractor] attempt ${attempt} failed (${msg.slice(0, 80)}), retry in ${delayMs}ms`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastError;
 }
 
 // ============================================================
